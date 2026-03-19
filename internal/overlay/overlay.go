@@ -1,10 +1,8 @@
-// Package overlay manages overlayfs mounts.
+// Package overlay manages overlayfs mounts for janus worktrees.
 //
-// NOTE: overlayfs is not used by the default janus workflow.  The current
-// implementation bind-mounts git worktree checkouts directly into containers,
-// which requires only the docker group and no elevated privileges.  This
-// package is retained for potential future use (e.g. an optional CoW layer).
-package overlay
+// Mounts are performed with fuse-overlayfs, a userspace implementation of
+// overlayfs that requires no elevated privileges — only /dev/fuse access,
+// which is granted by being in the fuse group (see janus setup).
 package overlay
 
 import (
@@ -16,7 +14,7 @@ import (
 	"strings"
 )
 
-// Create creates the upper/work/merged directories under dataDir/workspaceID.
+// Create creates the upper/work/merged directories for the worktree.
 func Create(upper, work, merged string) error {
 	for _, dir := range []string{upper, work, merged} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -26,11 +24,12 @@ func Create(upper, work, merged string) error {
 	return nil
 }
 
-// Mount mounts an overlayfs with the given source as lowerdir.
-// Requires CAP_SYS_ADMIN (run janus with sudo or via a privileged helper).
+// Mount mounts a fuse-overlayfs with the given source as lowerdir.
+// Requires fuse-overlayfs to be installed and /dev/fuse to be accessible
+// (add yourself to the fuse group — see janus setup).
 func Mount(source, upper, work, merged string) error {
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", source, upper, work)
-	cmd := exec.Command("mount", "-t", "overlay", "overlay", "-o", opts, merged)
+	cmd := exec.Command("fuse-overlayfs", "-o", opts, merged)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -41,7 +40,7 @@ func Mount(source, upper, work, merged string) error {
 
 // Unmount unmounts the merged directory.
 func Unmount(merged string) error {
-	cmd := exec.Command("umount", merged)
+	cmd := exec.Command("fusermount", "-u", merged)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -50,7 +49,8 @@ func Unmount(merged string) error {
 	return nil
 }
 
-// IsMounted returns true if merged is currently an overlay mount point.
+// IsMounted returns true if merged is currently a fuse-overlayfs (or kernel
+// overlayfs) mount point.
 func IsMounted(merged string) (bool, error) {
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
@@ -59,7 +59,10 @@ func IsMounted(merged string) (bool, error) {
 	// Each line: <device> <mountpoint> <type> <options> ...
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[2] == "overlay" && fields[1] == merged {
+		if len(fields) < 3 || fields[1] != merged {
+			continue
+		}
+		if fields[2] == "overlay" || fields[2] == "fuse.fuse-overlayfs" {
 			return true, nil
 		}
 	}

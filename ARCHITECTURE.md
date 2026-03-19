@@ -7,8 +7,8 @@ container worktrees over the same repository.
 - Each **worktree** gets:
   - an **isolated execution environment** (Docker container)
   - its own **git branch** (created via `git worktree add`)
-  - a **copy-on-write (CoW) overlay** on top of the git worktree checkout
-    so that only changed files consume extra disk
+  - a **copy-on-write (CoW) overlay** via `fuse-overlayfs` on top of the git
+    worktree checkout — only changed files consume extra disk
 - Switching between worktrees is **fast** — `janus switch <branch>` starts
   the worktree if needed and reopens it in the editor transparently.
 - The user can:
@@ -33,26 +33,30 @@ Non-goals for the minimal version:
 ---
 
 ## 1. Mental model
-Think "git worktree + dev container, direct bind-mount":
+Think "git worktree + fuse-overlayfs CoW + dev container":
 
 - The repo has a main checkout on disk.
 - `janus new <branch>` creates:
   1. A **git branch** (`git worktree add -b <branch> <path>`) at a path in the
      janus data directory.
-  2. A **Docker container** with the git worktree checkout bind-mounted at
-     `/workspace`.
+  2. A **fuse-overlayfs mount** with the git worktree as `lowerdir` and a
+     per-worktree `upper` directory for CoW changes.  No files are duplicated —
+     only writes land in `upper`.
+  3. A **Docker container** with the overlay `merged` dir mounted at `/workspace`.
 - `janus switch <branch>` finds/creates the worktree and reopens the editor there.
 
 ```
-repo/                         ← main checkout
-  .janus/state.json           ← janus metadata
+repo/                         <- main checkout
+  .janus/state.json           <- janus metadata
 
 ~/.local/share/janus/<repo-id>/<wt-id>/
-  tree/                       ← git worktree checkout → bind-mounted in container
+  tree/                       <- git worktree checkout (overlayfs lowerdir)
+  upper/                      <- CoW writes (overlayfs upperdir)
+  work/                       <- overlayfs workdir
+  merged/                     <- fuse-overlayfs merged view -> mounted in container
 ```
 
-No overlayfs, no elevated privileges.  The only requirement is membership in the
-**`docker` group**.
+No elevated privileges required after one-time group setup (see section 6).
 
 ---
 
@@ -86,18 +90,33 @@ Each worktree is backed by a real git worktree:
 git worktree add -b <branch> <data_dir>/<id>/tree [<from>]
 ```
 
-- The git worktree checkout is bind-mounted directly into the container.
-- Changes made inside the container go straight to the git worktree — normal
-  `git commit`, `git diff`, etc. work as expected.
+- The git worktree checkout path is the overlayfs `lowerdir`.
+- Changes made inside the container appear in the overlayfs `upper` (host-visible).
+- git operations (`git commit`, `git diff`, etc.) run **inside the container**
+  against the real git worktree.
 - `janus rm` calls `git worktree remove --force <path>` during cleanup.
 
 ---
 
-### 2.3 Container runtime layer
+### 2.3 CoW filesystem layer (fuse-overlayfs)
+```
+fuse-overlayfs \
+  -o lowerdir=<git_worktree>,upperdir=<upper>,workdir=<work> \
+  <merged>
+```
+
+- Reads from the git worktree unless a file is modified — no file duplication.
+- Writes land in `upper` only; ideal for large monorepos.
+- Unmount with `fusermount -u <merged>` (no sudo).
+- Requires `fuse-overlayfs` binary and `/dev/fuse` access (`fuse` group).
+
+---
+
+### 2.4 Container runtime layer
 ```
 docker run -d \
   --name janus-<repo-id>-<wt-id> \
-  -v <git_worktree_or_source_root>:/workspace \
+  -v <merged>:/workspace \
   -w /workspace \
   <image> \
   sleep infinity
@@ -170,45 +189,49 @@ attach manually.
 ### 4.2 `janus new <branch>`
 1. Create state entry with random `id` and given `branch`.
 2. If `is_git_repo`: run `git worktree add [-b] <tree_path> <branch> [<from>]`.
-3. Start Docker container with `<tree_path>` (or source root) bind-mounted at
-   `/workspace`.
-4. Persist `container_id` and `git_worktree_path`.
+3. Create overlay dirs (`upper/`, `work/`, `merged/`).
+4. Mount fuse-overlayfs (`lowerdir` = git worktree or source root).
+5. Start Docker container with `<merged>` mounted at `/workspace`.
+6. Persist `container_id` and `git_worktree_path`.
 
 ### 4.3 `janus switch <branch>`
 1. Look up worktree by branch; if missing, auto-create via `janus new`.
-2. `EnsureRunning`.
+2. `EnsureMounted` + `EnsureRunning`.
 3. Attempt VS Code Dev Containers `attached-container` URI; print container
    info if VS Code is not available.
 
 ### 4.4 `janus enter <branch>`
-1. `EnsureRunning`.
+1. `EnsureMounted` + `EnsureRunning`.
 2. `docker exec -it <container> bash`.
 
 ### 4.5 `janus rm <branch>`
 1. `docker stop` + `docker rm`.
-2. `git worktree remove --force <tree>` (if git-backed).
-3. `git worktree prune`.
-4. `os.RemoveAll(<data_dir>/<id>)`.
+2. `fusermount -u <merged>` + `os.RemoveAll(<upper>/<work>/<merged>)`.
+3. `git worktree remove --force <tree>` (if git-backed).
+4. `git worktree prune`.
 5. Remove from state.
 
 ---
 
 ## 5. Performance
-- Create: O(1) git worktree add + container start.
-- Storage: git worktree checkout per branch (shared objects via git).
-- Switch: select different container + different bind-mounted path (instant).
+- Create: O(1) git worktree add + overlay mount + container start.
+- Storage: git worktree checkout per branch + only changed files in `upper/`
+  (shared object store across branches via git).
+- Switch: select different container + different merged path (instant).
 
 ---
 
 ## 6. Privilege model
-No elevated privileges are required.  The only group membership needed is
-**`docker`**, which allows running Docker commands as a normal user:
+No per-command `sudo` is required.  Two one-time group memberships are needed,
+both set up via `janus setup`:
 
-```sh
-sudo usermod -aG docker $USER   # log out and back in to apply
-```
+| Group    | Purpose                                        | One-time fix                    |
+|----------|------------------------------------------------|---------------------------------|
+| `docker` | Run `docker` commands without sudo             | `sudo usermod -aG docker $USER` |
+| `fuse`   | Access `/dev/fuse` for rootless fuse-overlayfs | `sudo usermod -aG fuse $USER`   |
 
-Run `janus setup` to verify all prerequisites are met.
+Log out and back in after running the `usermod` commands, then run
+`janus setup` to confirm.  After that, all `janus` commands run unprivileged.
 
 ---
 
@@ -216,7 +239,7 @@ Run `janus setup` to verify all prerequisites are met.
 
 ### Phase 0: CLI MVP ✓
 - `setup`, `init`, `new`, `ls`, `switch`, `enter`, `exec`, `rm`
-- Direct bind-mount + Docker + git worktrees (no overlayfs, no sudo)
+- fuse-overlayfs CoW + Docker + git worktrees (no per-command sudo)
 - JSON state file
 
 ### Phase 1: UX polish
@@ -241,8 +264,8 @@ Run `janus setup` to verify all prerequisites are met.
 
 ## 8. Glossary
 - **Repo**: the project being worked on (must be a git repo for full features).
-- **Worktree**: a git branch + overlayfs overlay + Docker container triple.
-- **Git worktree**: the git-managed directory at `<data_dir>/<id>/tree`.
-- **Upperdir**: writable CoW layer (stores only changed files).
-- **Merged**: the overlayfs unified view mounted inside the container.
+- **Worktree**: a git branch + fuse-overlayfs CoW layer + Docker container triple.
+- **Git worktree**: the git-managed checkout at `<data_dir>/<id>/tree` (lowerdir).
+- **Upperdir**: writable CoW layer storing only changed files.
+- **Merged**: the fuse-overlayfs unified view mounted at `/workspace` in the container.
 

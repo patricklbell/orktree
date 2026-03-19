@@ -220,6 +220,30 @@ func TestRemoveWorktree(t *testing.T) {
 	}
 }
 
+func TestOverlayDirs(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, state.DefaultImage, false)
+	w := state.Worktree{
+		ID:        "abcdef",
+		Branch:    "main",
+		CreatedAt: time.Now(),
+	}
+	upper, work, merged := cfg.OverlayDirs(w)
+	if upper == "" || work == "" || merged == "" {
+		t.Error("OverlayDirs returned empty paths")
+	}
+	base := filepath.Join(cfg.DataDir, w.ID)
+	if upper != filepath.Join(base, "upper") {
+		t.Errorf("upper = %q, want %q", upper, filepath.Join(base, "upper"))
+	}
+	if work != filepath.Join(base, "work") {
+		t.Errorf("work = %q", work)
+	}
+	if merged != filepath.Join(base, "merged") {
+		t.Errorf("merged = %q", merged)
+	}
+}
+
 func TestMountPath(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, state.DefaultImage, true)
@@ -288,4 +312,3 @@ func TestStateFileInJanusDir(t *testing.T) {
 		t.Errorf("StateDir = %q, want %q", state.StateDir, ".janus")
 	}
 }
-

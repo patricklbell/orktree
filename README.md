@@ -1,26 +1,47 @@
 # janus
-Container worktrees for agents — each branch gets its own isolated workspace.
+Container worktrees for agents — each branch gets its own isolated workspace
+with **no file duplication** (copy-on-write via `fuse-overlayfs`).
 
-`janus` creates a Docker container + git worktree pair for every branch you
-work on.  Switch between them instantly; each branch gets its own file state
-and running container.
+`janus` creates a git worktree + fuse-overlayfs CoW layer + Docker container
+triple for every branch.  Only files you actually change consume extra disk;
+the rest is shared read-only with the main checkout.
 
-## Prerequisites
+## One-time setup
 
-Run `janus setup` to verify everything is in order.  The only requirement
-beyond Docker and git is that your user is in the **`docker` group**:
+Run `janus setup` to verify all prerequisites.  Two groups are required:
+
+| Group    | Why                                       | Fix (run once, then log out/in) |
+|----------|-------------------------------------------|---------------------------------|
+| `docker` | run containers without sudo               | `sudo usermod -aG docker $USER` |
+| `fuse`   | access `/dev/fuse` for rootless overlayfs | `sudo usermod -aG fuse $USER`   |
+
+`fuse-overlayfs` must also be installed:
 
 ```sh
-sudo usermod -aG docker $USER   # log out and back in to apply
+# Debian/Ubuntu
+sudo apt-get install fuse-overlayfs
+
+# Fedora/RHEL
+sudo dnf install fuse-overlayfs
+
+# Arch
+sudo pacman -S fuse-overlayfs
+```
+
+After installing and running the two `usermod` commands, log out and back in,
+then confirm everything is ready:
+
+```sh
+janus setup   # should show ✓ for all five checks
 ```
 
 ## Quick start
 
 ```sh
-# In any git repo — run janus setup first if needed
+# In any git repo
 janus init
 
-# Create a worktree on a new branch
+# Create a worktree on a new branch (CoW — no file duplication)
 janus new feature-x
 
 # Switch to a branch (auto-creates if needed)
@@ -36,11 +57,11 @@ janus enter feature-x        # or: janus sh feature-x
 # Run a command non-interactively
 janus exec feature-x -- make test
 
-# Remove worktree (stops container, removes git worktree)
+# Remove worktree (stops container, unmounts overlay, removes git worktree)
 janus rm feature-x
 ```
 
-No `sudo` required for any command.
+No `sudo` required for any of the above commands after the one-time setup.
 
 ### `janus switch` and VS Code
 
