@@ -1,22 +1,31 @@
 # janus
 Container worktrees for agents — each branch gets its own isolated workspace.
 
-`janus` creates a Docker container + overlayfs + git worktree triple for every
-branch you work on.  Switch between them instantly; each gets its own file
-state and running container.
+`janus` creates a Docker container + git worktree pair for every branch you
+work on.  Switch between them instantly; each branch gets its own file state
+and running container.
+
+## Prerequisites
+
+Run `janus setup` to verify everything is in order.  The only requirement
+beyond Docker and git is that your user is in the **`docker` group**:
+
+```sh
+sudo usermod -aG docker $USER   # log out and back in to apply
+```
 
 ## Quick start
 
 ```sh
-# In any git repo
-janus init [--image <docker-image>]
+# In any git repo — run janus setup first if needed
+janus init
 
-# Create a worktree on a new branch (requires CAP_SYS_ADMIN for the overlay)
-sudo janus new feature-x
+# Create a worktree on a new branch
+janus new feature-x
 
 # Switch to a branch (auto-creates if needed)
 # With VS Code + Dev Containers extension: reopens the editor inside the container
-sudo janus switch feature-x
+janus switch feature-x
 
 # List worktrees
 janus ls
@@ -27,9 +36,11 @@ janus enter feature-x        # or: janus sh feature-x
 # Run a command non-interactively
 janus exec feature-x -- make test
 
-# Remove worktree (container + overlay + git worktree)
-sudo janus rm feature-x
+# Remove worktree (stops container, removes git worktree)
+janus rm feature-x
 ```
+
+No `sudo` required for any command.
 
 ### `janus switch` and VS Code
 

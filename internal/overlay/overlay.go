@@ -1,4 +1,10 @@
-// Package overlay manages overlayfs mounts for janus worktrees.
+// Package overlay manages overlayfs mounts.
+//
+// NOTE: overlayfs is not used by the default janus workflow.  The current
+// implementation bind-mounts git worktree checkouts directly into containers,
+// which requires only the docker group and no elevated privileges.  This
+// package is retained for potential future use (e.g. an optional CoW layer).
+package overlay
 package overlay
 
 import (

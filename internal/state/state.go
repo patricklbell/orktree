@@ -41,18 +41,10 @@ type Worktree struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
-// OverlayDirs returns the three overlay sub-directories for a worktree.
-func (c *Config) OverlayDirs(w Worktree) (upper, work, merged string) {
-	base := filepath.Join(c.DataDir, w.ID)
-	return filepath.Join(base, "upper"),
-		filepath.Join(base, "work"),
-		filepath.Join(base, "merged")
-}
-
-// LowerDir returns the overlayfs lowerdir for the given worktree.
-// When git integration is active and a worktree checkout exists, that path is
-// used; otherwise the repo source root is used.
-func (c *Config) LowerDir(w Worktree) string {
+// MountPath returns the host directory that will be bind-mounted into the
+// container at /workspace.  For git-backed worktrees this is the git worktree
+// checkout; for plain directories it is the source root.
+func (c *Config) MountPath(w Worktree) string {
 	if w.GitWorktreePath != "" {
 		return w.GitWorktreePath
 	}

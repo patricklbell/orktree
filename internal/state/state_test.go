@@ -220,44 +220,20 @@ func TestRemoveWorktree(t *testing.T) {
 	}
 }
 
-func TestOverlayDirs(t *testing.T) {
-	dir := t.TempDir()
-	cfg, _ := state.Init(dir, state.DefaultImage, false)
-	w := state.Worktree{
-		ID:        "abcdef",
-		Branch:    "main",
-		CreatedAt: time.Now(),
-	}
-	upper, work, merged := cfg.OverlayDirs(w)
-	if upper == "" || work == "" || merged == "" {
-		t.Error("OverlayDirs returned empty paths")
-	}
-	base := filepath.Join(cfg.DataDir, w.ID)
-	if upper != filepath.Join(base, "upper") {
-		t.Errorf("upper = %q, want %q", upper, filepath.Join(base, "upper"))
-	}
-	if work != filepath.Join(base, "work") {
-		t.Errorf("work = %q", work)
-	}
-	if merged != filepath.Join(base, "merged") {
-		t.Errorf("merged = %q", merged)
-	}
-}
-
-func TestLowerDir(t *testing.T) {
+func TestMountPath(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, state.DefaultImage, true)
 
 	// Without git worktree path: falls back to SourceRoot.
 	wNoGit := state.Worktree{ID: "aaa", Branch: "main", CreatedAt: time.Now()}
-	if cfg.LowerDir(wNoGit) != cfg.SourceRoot {
-		t.Errorf("LowerDir without GitWorktreePath should return SourceRoot")
+	if cfg.MountPath(wNoGit) != cfg.SourceRoot {
+		t.Errorf("MountPath without GitWorktreePath should return SourceRoot")
 	}
 
 	// With git worktree path: uses that path.
 	wGit := state.Worktree{ID: "bbb", Branch: "feature", GitWorktreePath: "/some/tree", CreatedAt: time.Now()}
-	if cfg.LowerDir(wGit) != "/some/tree" {
-		t.Errorf("LowerDir with GitWorktreePath should return that path")
+	if cfg.MountPath(wGit) != "/some/tree" {
+		t.Errorf("MountPath with GitWorktreePath should return that path")
 	}
 }
 
