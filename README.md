@@ -14,24 +14,34 @@ janus init [--image <docker-image>]
 # Create a worktree on a new branch (requires CAP_SYS_ADMIN for the overlay)
 sudo janus new feature-x
 
-# Switch to a branch (auto-creates if needed, reopens editor in-place)
+# Switch to a branch (auto-creates if needed)
+# With VS Code + Dev Containers extension: reopens the editor inside the container
 sudo janus switch feature-x
 
 # List worktrees
 janus ls
 
-# Open interactive shell
+# Open interactive shell inside the container
 janus enter feature-x        # or: janus sh feature-x
 
 # Run a command non-interactively
 janus exec feature-x -- make test
 
-# Open in editor
-janus open feature-x [--editor code|vim|emacs]
-
 # Remove worktree (container + overlay + git worktree)
 sudo janus rm feature-x
 ```
+
+### `janus switch` and VS Code
+
+`janus switch <branch>` starts the worktree and attempts to reopen VS Code
+**inside the running container** using the Dev Containers
+["Attach to Running Container"](https://code.visualstudio.com/docs/devcontainers/attach-container)
+feature.  This requires the
+[Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
+
+No other editors have an equivalent single-command "reopen in container" flow,
+so `janus switch` only attempts this for VS Code.  For any other editor, use
+`janus enter <branch>` to get a shell inside the container.
 
 ### Command aliases
 

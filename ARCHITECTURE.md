@@ -66,10 +66,9 @@ Short, git-like commands with aliases:
 janus init   [--source <path>] [--image <image>]
 janus new    <branch> [--from <base>]         aliases: n
 janus ls                                       aliases: list
-janus switch <branch> [--editor <e>]          aliases: sw
+janus switch <branch>                          aliases: sw
 janus enter  <branch>                         aliases: sh
 janus exec   <branch> -- <cmd...>
-janus open   <branch> [--editor <e>]
 janus rm     <branch> [--force]               aliases: remove
 ```
 
@@ -126,21 +125,29 @@ docker run -d \
 
 ---
 
-### 2.5 Editor integration (`janus switch` / `janus open`)
-**`janus switch <branch>`** (transparent switch):
-1. Find or auto-create the worktree.
-2. Ensure overlay mounted + container running.
-3. Open in editor with window-reuse:
-   - VS Code: attempt Dev Containers URI
-     `vscode-remote://attached-container+<hex-container-name>/workspace`
-     then fall back to `code --reuse-window <merged>`.
-   - Other editors: `<editor> <merged>`.
+### 2.5 Editor integration (`janus switch`)
+`janus switch <branch>` ensures the worktree is running and then attempts to
+reopen **VS Code** inside the container using the Dev Containers
+"Attach to Running Container" URI:
 
-**`janus open <branch>`** (no reuse):
-- Opens `<merged>` in the detected or specified editor.
+```
+vscode-remote://attached-container+<hex-json>/workspace
+```
+
+where `<hex-json>` is the hex encoding of `{"containerName":"/<container>"}`.
+
+This is the only supported editor integration because it is the only one that
+can perform a true "reopen in container" in a single command. Vim, Emacs, and
+other editors do not have an equivalent workflow, so no integration is
+attempted for them — the user can use `janus enter <branch>` to get a shell
+inside any worktree's container instead.
+
+If VS Code is not installed or the Dev Containers extension is missing, `janus
+switch` still starts the worktree and prints the container name so the user can
+attach manually.
 
 **Future: VS Code extension**
-- Lists worktrees, calls `janus switch`, attaches Remote Containers.
+- Lists worktrees, calls `janus switch`, manages the Dev Containers lifecycle.
 
 ---
 
@@ -188,7 +195,8 @@ docker run -d \
 ### 4.3 `janus switch <branch>`
 1. Look up worktree by branch; if missing, auto-create via `janus new`.
 2. `EnsureMounted` + `EnsureRunning`.
-3. Open in editor with window reuse.
+3. Attempt VS Code Dev Containers `attached-container` URI; print container
+   info if VS Code is not available.
 
 ### 4.4 `janus enter <branch>`
 1. `EnsureMounted` + `EnsureRunning`.

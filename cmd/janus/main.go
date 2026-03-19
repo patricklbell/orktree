@@ -28,7 +28,6 @@ func run(args []string) error {
 	}
 
 	switch args[0] {
-	// Core commands
 	case "init":
 		return cmdInit(args[1:])
 	case "new", "n":
@@ -41,8 +40,6 @@ func run(args []string) error {
 		return cmdEnter(args[1:])
 	case "exec":
 		return cmdExec(args[1:])
-	case "open":
-		return cmdOpen(args[1:])
 	case "rm", "remove":
 		return cmdRm(args[1:])
 	case "help", "--help", "-h":
@@ -187,7 +184,6 @@ func cmdNew(args []string) error {
 	}
 	fmt.Println()
 	fmt.Printf("Enter  : janus enter  %s\n", w.Branch)
-	fmt.Printf("Open   : janus open   %s\n", w.Branch)
 	fmt.Printf("Switch : janus switch %s\n", w.Branch)
 	fmt.Printf("Remove : janus rm     %s\n", w.Branch)
 	return nil
@@ -237,6 +233,11 @@ func cmdLs(_ []string) error {
 
 // ---------------------------------------------------------------------------
 // switch  (janus switch <branch>)
+//
+// Ensures the worktree is running, then attempts to reopen VS Code with the
+// Dev Containers "Attach to Running Container" feature.  No other editors
+// support a true "reopen in container" workflow, so nothing is attempted for
+// them.
 // ---------------------------------------------------------------------------
 
 func cmdSwitch(args []string) error {
@@ -244,18 +245,8 @@ func cmdSwitch(args []string) error {
 		return fmt.Errorf("usage: janus switch <branch>")
 	}
 	branch := args[0]
-	editor := ""
 	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "--editor", "-e":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--editor requires a value")
-			}
-			i++
-			editor = args[i]
-		default:
-			return fmt.Errorf("unknown flag %q", args[i])
-		}
+		return fmt.Errorf("unknown flag %q", args[i])
 	}
 
 	cfg, err := loadFromCwd()
@@ -279,20 +270,23 @@ func cmdSwitch(args []string) error {
 		return err
 	}
 
-	if editor == "" {
-		editor = detectEditor()
-	}
-
-	fmt.Printf("Switching to worktree %q\n", w.Branch)
+	fmt.Printf("Switched to worktree %q\n", w.Branch)
 	fmt.Printf("  container : %s\n", w.ContainerID)
 	fmt.Printf("  path      : %s\n", merged)
 
-	if editor == "" {
-		fmt.Println("(no editor detected; open the path above manually)")
-		return nil
+	// Attempt VS Code Dev Containers "Attach to Running Container".
+	// The URI reopens VS Code inside the container — no fallback to a simple
+	// folder open, which the user can do themselves.
+	if _, err := exec.LookPath("code"); err == nil {
+		uri := attachedContainerURI(w.ContainerID, "/workspace")
+		cmd := exec.Command("code", "--folder-uri", uri)
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "note: VS Code Dev Containers attach failed (%v)\n", err)
+			fmt.Fprintf(os.Stderr, "      Ensure the Dev Containers extension is installed and the container is running.\n")
+			fmt.Fprintf(os.Stderr, "      Container: %s\n", w.ContainerID)
+		}
 	}
-
-	return openInEditor(editor, w.ContainerID, merged, true)
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -358,53 +352,6 @@ func cmdExec(args []string) error {
 		return err
 	}
 	return container.Exec(w.ContainerID, cmdArgs)
-}
-
-// ---------------------------------------------------------------------------
-// open  (janus open <ref> [--editor <e>])
-// ---------------------------------------------------------------------------
-
-func cmdOpen(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: janus open <branch> [--editor code|vim|emacs]")
-	}
-	ref := args[0]
-	editor := ""
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "--editor", "-e":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--editor requires a value")
-			}
-			i++
-			editor = args[i]
-		default:
-			return fmt.Errorf("unknown flag %q", args[i])
-		}
-	}
-
-	cfg, err := loadFromCwd()
-	if err != nil {
-		return err
-	}
-	w, err := state.FindWorktree(cfg, ref)
-	if err != nil {
-		return err
-	}
-
-	_, _, merged := cfg.OverlayDirs(w)
-
-	if editor == "" {
-		editor = detectEditor()
-	}
-	if editor == "" {
-		fmt.Printf("Worktree merged path: %s\n", merged)
-		fmt.Println("(Could not detect editor; set --editor or open the path manually.)")
-		return nil
-	}
-
-	fmt.Printf("Opening %s in %s\n", merged, editor)
-	return openInEditor(editor, w.ContainerID, merged, false)
 }
 
 // ---------------------------------------------------------------------------
@@ -489,64 +436,26 @@ func loadFromCwd() (*state.Config, error) {
 	return nil, fmt.Errorf("no .janus/state.json found in %s or any parent directory (did you run 'janus init'?)", cwd)
 }
 
-// detectEditor returns the first available editor in a priority list.
-func detectEditor() string {
-	for _, e := range []string{"code", "vim", "nano", "emacs"} {
-		if _, err := exec.LookPath(e); err == nil {
-			return e
-		}
-	}
-	if e := os.Getenv("EDITOR"); e != "" {
-		return e
-	}
-	return ""
-}
-
-// openInEditor opens the merged path in the given editor.
-// When reuse is true and editor is VS Code, the existing window is reused;
-// a Dev Containers URI is attempted first so the editor attaches to the
-// running container.
-func openInEditor(editor, containerID, merged string, reuse bool) error {
-	if editor == "code" {
-		if reuse && containerID != "" {
-			// Try to attach VS Code to the running container via the Dev
-			// Containers extension. The URI format is:
-			//   vscode-remote://attached-container+<hex-container-name>/workspace
-			uri := devContainersURI(containerID, "/workspace")
-			cmd := exec.Command("code", "--folder-uri", uri)
-			if err := cmd.Run(); err == nil {
-				return nil
-			}
-			// Fall back: reuse the window and open the host-visible merged path.
-			cmd = exec.Command("code", "--reuse-window", merged)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			return cmd.Run()
-		}
-		cmd := exec.Command("code", merged)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		return cmd.Run()
-	}
-	cmd := exec.Command(editor, merged)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-// devContainersURI returns a VS Code Remote URI that attaches to the given
-// Docker container and opens the workspace path inside it.
-// The container identifier is hex-encoded as required by the protocol.
-func devContainersURI(containerName, workspacePath string) string {
-	var hex []byte
+// attachedContainerURI returns the VS Code Remote URI for attaching to a
+// running Docker container via the Dev Containers extension.
+//
+// The protocol requires a hex-encoded JSON descriptor:
+//
+//	{"containerName":"/<name>"}
+//
+// Docker container names always have a leading "/" in the API, so we add one.
+// Ref: https://code.visualstudio.com/docs/devcontainers/attach-container
+func attachedContainerURI(containerName, workspacePath string) string {
+	// Build the JSON identifier VS Code expects.
+	jsonDesc := fmt.Sprintf(`{"containerName":"/%s"}`, containerName)
+	// Hex-encode each byte of the JSON string.
+	hexBuf := make([]byte, len(jsonDesc)*2)
 	const hexChars = "0123456789abcdef"
-	for _, b := range []byte(containerName) {
-		hex = append(hex, hexChars[b>>4], hexChars[b&0xf])
+	for i, b := range []byte(jsonDesc) {
+		hexBuf[i*2] = hexChars[b>>4]
+		hexBuf[i*2+1] = hexChars[b&0xf]
 	}
-	return fmt.Sprintf("vscode-remote://attached-container+%s%s", hex, workspacePath)
+	return fmt.Sprintf("vscode-remote://attached-container+%s%s", hexBuf, workspacePath)
 }
 
 // ---------------------------------------------------------------------------
@@ -560,14 +469,13 @@ Usage:
   janus <command> [args...]
 
 Commands:
-  init   [--source <path>] [--image <image>]   Initialize janus in a directory
-  new    <branch> [--from <base>]              Create worktree on branch
-  ls                                           List worktrees
-  switch <branch>                              Switch to worktree (start + open editor)
-  enter  <branch>                              Open shell in worktree container
-  exec   <branch> -- <cmd...>                  Run command in worktree container
-  open   <branch> [--editor code|vim|emacs]    Open worktree path in editor
-  rm     <branch> [--force]                    Remove worktree
+  init   [--source <path>] [--image <image>]  Initialize janus in a directory
+  new    <branch> [--from <base>]             Create worktree on branch
+  ls                                          List worktrees
+  switch <branch>                             Start worktree and reopen VS Code in container
+  enter  <branch>                             Open shell in worktree container
+  exec   <branch> -- <cmd...>                 Run command in worktree container
+  rm     <branch> [--force]                   Remove worktree
 
 Aliases:
   new → n    switch → sw    enter → sh    rm → remove    ls → list
