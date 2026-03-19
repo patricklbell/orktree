@@ -1,4 +1,4 @@
-// Package overlay manages overlayfs mounts for agentw workspaces.
+// Package overlay manages overlayfs mounts for janus worktrees.
 package overlay
 
 import (
@@ -21,7 +21,7 @@ func Create(upper, work, merged string) error {
 }
 
 // Mount mounts an overlayfs with the given source as lowerdir.
-// Requires CAP_SYS_ADMIN (run agentw with sudo or via a privileged helper).
+// Requires CAP_SYS_ADMIN (run janus with sudo or via a privileged helper).
 func Mount(source, upper, work, merged string) error {
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", source, upper, work)
 	cmd := exec.Command("mount", "-t", "overlay", "overlay", "-o", opts, merged)

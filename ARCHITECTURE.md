@@ -1,374 +1,257 @@
 # Architecture: minimal Linux-only "container worktree" tool
 
 ## 0. Goal (what we're building)
-A CLI tool that lets a developer (or AI agent) create multiple parallel container
-workspaces over the same source directory.
+A CLI tool (`janus`) that lets a developer (or AI agent) create multiple parallel
+container worktrees over the same repository.
 
-- Each **workspace** gets:
+- Each **worktree** gets:
   - an **isolated execution environment** (Docker container)
-  - a **workspace view** of the source directory that starts identical to the base
-  - **copy-on-write (CoW) file semantics**: only files changed in that workspace
-    consume extra disk
-- Switching between workspaces is **fast**.
+  - its own **git branch** (created via `git worktree add`)
+  - a **copy-on-write (CoW) overlay** on top of the git worktree checkout
+    so that only changed files consume extra disk
+- Switching between worktrees is **fast** — `janus switch <branch>` starts
+  the worktree if needed and reopens it in the editor transparently.
 - The user can:
-  - list workspaces, enter a workspace, run commands in one
+  - list worktrees, enter a worktree shell, run commands in one
   - open files (via their editor) and see changes immediately
-  - remove workspaces cleanly
-- Linux-only, Docker allowed.
-- **No version-control coupling**: the tool works with any directory.
-  Diffs, branches, and commit history are the responsibility of the caller (git,
-  mercurial, or any other VCS running inside the container).
+  - switch between branches as if switching between contexts
+- Linux-only, Docker required, git required for worktree branch tracking.
 - Security is *not* a concern (single-user dev tool).
 - Prioritize usability and speed to implement.
-- Start as a **CLI**, with a plan for future editor integrations:
-  1) VS Code
+- CLI-first, with a plan for future editor integrations:
+  1) VS Code (highest priority)
   2) Vim
   3) Emacs
-  4) Other editors
 
 Non-goals for the minimal version:
-- VCS awareness or built-in diff/patch commands
 - Multi-tenant isolation / sandbox hardening
 - Remote execution / cloud orchestration
 - Cross-platform filesystem tricks (macOS/Windows host without Linux VM)
-- Complex merge-conflict workflows
+- Complex merge-conflict workflows beyond standard git tooling
 - Complex agent scheduling (multiple LLM agents at once can be layered later)
 
 ---
 
 ## 1. Mental model
-Think "multiple writable views of one source tree, each in its own container":
+Think "git worktree + dev container + CoW overlay":
 
-- There is exactly one **base source directory** on disk (read-only in practice).
-- Each workspace creates a **writable overlay** on top of the base using a kernel
-  CoW mechanism.
-- Each workspace runs in its own Docker container that mounts that overlay as
-  `/workspace`.
+- The repo has a main checkout on disk.
+- `janus new <branch>` creates:
+  1. A **git branch** (`git worktree add -b <branch> <path>`) at a path in the
+     janus data directory.
+  2. An **overlayfs mount** with the git worktree as `lowerdir` and a per-worktree
+     `upper` directory for CoW changes.
+  3. A **Docker container** with the overlay `merged` dir mounted at `/workspace`.
+- `janus switch <branch>` finds/creates the worktree and reopens the editor there.
 
-This yields:
-- fast create (no full copy)
-- cheap storage for N workspaces
-- clean separation of changes per workspace
-- VCS tools (git, etc.) work normally inside the container
+```
+repo/                         ← main checkout
+  .janus/state.json           ← janus metadata
+
+~/.local/share/janus/<repo-id>/<wt-id>/
+  tree/                       ← git worktree checkout (lowerdir)
+  upper/                      ← CoW writes (overlayfs upperdir)
+  work/                       ← overlayfs workdir
+  merged/                     ← overlayfs merged view → mounted in container
+```
 
 ---
 
-## 2. Minimal high-level components (layers)
+## 2. Minimal high-level components
 
-### 2.1 CLI (what we implement)
-A single executable, `agentw`, providing core commands.
-
-Minimal command set:
+### 2.1 CLI (`janus`)
+Short, git-like commands with aliases:
 
 ```
-agentw init [--source <path>] [--image <docker-image>]
+janus init   [--source <path>] [--image <image>]
+janus new    <branch> [--from <base>]         aliases: n
+janus ls                                       aliases: list
+janus switch <branch> [--editor <e>]          aliases: sw
+janus enter  <branch>                         aliases: sh
+janus exec   <branch> -- <cmd...>
+janus open   <branch> [--editor <e>]
+janus rm     <branch> [--force]               aliases: remove
 ```
-Initialises state for a source directory. Defaults to the current directory.
-Records the source path and chosen container image; does **not** require a git
-repository.
 
-```
-agentw workspace new [--name <name>]
-```
-Creates a new workspace (overlay + container).
-
-```
-agentw workspace ls
-```
-Lists workspaces and their status (running/stopped).
-
-```
-agentw workspace enter <workspace_id>
-```
-Opens an interactive shell inside that workspace's container.
-
-```
-agentw workspace exec <workspace_id> -- <cmd...>
-```
-Runs a command in the workspace container (non-interactive).
-
-```
-agentw workspace open <workspace_id> [--editor code|vim|emacs|...]
-```
-Opens the workspace's host-visible merged path in an editor.
-
-```
-agentw workspace rm <workspace_id> [--force]
-```
-Removes a workspace (container + overlay dirs).
-
-Usability notes:
-- Default to sensible behaviour with minimal flags.
-- Use human-friendly ids (short hash or incrementing int).
-- Show clear "where is this on disk" output.
-- Avoid exposing overlayfs terminology to end users.
-- Intentionally omits diff/VCS commands — callers use git (or any VCS) inside
-  the container.
+Design principles:
+- Primary identifier for a worktree is its **branch name** (not an opaque ID).
+- IDs/prefixes also accepted for all ref arguments.
+- `janus switch` is the main workflow command — it auto-creates the worktree if
+  it doesn't exist yet.
 
 ---
 
-### 2.2 Workspace storage / CoW filesystem layer
-#### Choice: overlayfs (Linux kernel built-in)
+### 2.2 Git integration
+Each worktree is backed by a real git worktree:
 
-Directories:
-- Base source: supplied at `init` time — any directory, no VCS required.
-- Per-workspace overlay dirs (stored in the user data directory):
-  - `UPPER=<data_dir>/<workspace_id>/upper`
-  - `WORK=<data_dir>/<workspace_id>/work`
-  - `MERGED=<data_dir>/<workspace_id>/merged`
+```
+git worktree add -b <branch> <data_dir>/<id>/tree [<from>]
+```
 
-Mount command:
+- The git worktree checkout path becomes the overlayfs `lowerdir`.
+- Changes made inside the container appear in the overlayfs `upper` (host-visible).
+- git operations (`git commit`, `git diff`, etc.) run **inside the container**
+  against the real git worktree.
+- `janus rm` calls `git worktree remove --force <path>` during cleanup.
+
+---
+
+### 2.3 Workspace storage / CoW filesystem layer (overlayfs)
 ```
 mount -t overlay overlay \
-  -o lowerdir=<source>,upperdir=<UPPER>,workdir=<WORK> \
-  <MERGED>
+  -o lowerdir=<git_worktree_or_source_root>,upperdir=<upper>,workdir=<work> \
+  <merged>
 ```
 
-Properties:
-- Reads come from the source directory unless a file has been modified.
-- Writes create/modify files only in `UPPER`.
-- Storage per workspace is proportional to changed files.
+- Reads from the git worktree unless a file is modified.
+- Writes land in `upper` only.
+- Storage per worktree proportional to changed files.
 
-What we implement:
-- Directory layout
-- Mount/unmount lifecycle
-- "is workspace mounted?" detection
-- Cleanup on `rm`
-
-What already exists:
-- overlayfs in kernel
-- `mount(8)` tooling
-
-Notes:
-- Mount operations require `CAP_SYS_ADMIN`; simplest approach is to run
-  `agentw` with `sudo` for commands that need it, or supply a small privileged
-  helper (see §7).
+Requires `CAP_SYS_ADMIN` (run `janus` with `sudo` or use a privileged helper).
 
 ---
 
-### 2.3 Container runtime layer
-Each workspace gets a Docker container:
-- Image: configurable (set at `init`, overridable per workspace).
-- Mount: workspace `MERGED` → `/workspace` inside the container.
-- Working directory: `/workspace`.
-- Optional per-workspace HOME to avoid cross-workspace cache collisions.
-
-Container lifecycle:
+### 2.4 Container runtime layer
 ```
-# create & start
 docker run -d \
-  --name agentw-<workspace_id> \
-  -v <MERGED>:/workspace \
+  --name janus-<repo-id>-<wt-id> \
+  -v <merged>:/workspace \
   -w /workspace \
   <image> \
   sleep infinity
-
-# interactive shell
-docker exec -it agentw-<workspace_id> bash
-
-# non-interactive command
-docker exec agentw-<workspace_id> <cmd...>
-
-# stop & remove
-docker stop agentw-<workspace_id>
-docker rm   agentw-<workspace_id>
 ```
 
-What we implement:
-- Container naming convention
-- Start / stop / inspect lifecycle
-- `workspace_id → container name` mapping
-- "ensure running" behaviour for commands that need it
+- `janus enter <branch>` → `docker exec -it <container> bash`
+- `janus exec <branch> -- <cmd>` → `docker exec <container> <cmd>`
 
 ---
 
-### 2.4 VCS and diff (intentionally out of scope)
-The tool does **not** provide built-in diff, branch, or commit commands.
-Any VCS that works inside a directory works inside a workspace without special
-support:
-- `git diff`, `git commit`, `hg status`, etc. all work inside the container.
-- The user (or agent) is responsible for initialising and using a VCS inside
-  the workspace.
+### 2.5 Editor integration (`janus switch` / `janus open`)
+**`janus switch <branch>`** (transparent switch):
+1. Find or auto-create the worktree.
+2. Ensure overlay mounted + container running.
+3. Open in editor with window-reuse:
+   - VS Code: attempt Dev Containers URI
+     `vscode-remote://attached-container+<hex-container-name>/workspace`
+     then fall back to `code --reuse-window <merged>`.
+   - Other editors: `<editor> <merged>`.
 
-This keeps the tool minimal and avoids hard-coding assumptions about the
-development workflow.
+**`janus open <branch>`** (no reuse):
+- Opens `<merged>` in the detected or specified editor.
 
----
-
-### 2.5 Editor integration layer (future; start with "open folder")
-For the CLI MVP, provide a stable host path and open it.
-
-**MVP behaviour:**
-- `agentw workspace open <id>` opens `<MERGED>`:
-  - For VS Code: `code <MERGED>`
-  - For Vim: `vim <MERGED>`
-  - For Emacs: `emacs <MERGED>`
-
-**Future: VS Code integration**
-- Extension that lists workspaces and attaches Remote - Containers to the
-  running container.
-
-**Future: Vim / Emacs integration**
-- Minimal plugins that shell out to `agentw` and open terminal sessions.
+**Future: VS Code extension**
+- Lists worktrees, calls `janus switch`, attaches Remote Containers.
 
 ---
 
-## 3. State & metadata (minimal)
-A single JSON file per initialised source directory:
-- `.agentw/state.json` (in the source root, user-friendly and portable)
+## 3. State & metadata
 
-Global data directory for overlay dirs:
-- `~/.local/share/agentw/<workspace_set_id>/` (or `/var/lib/agentw` if run
-  as root)
+`.janus/state.json` in the source root:
 
-### Schema
-
-**Workspace-set level** (one per `init`):
 ```json
 {
-  "workspace_set_id": "<hash of source_root>",
-  "source_root":      "<absolute path>",
-  "image":            "<docker image>",
-  "data_dir":         "<absolute path to overlay data>",
-  "workspaces":       [ ... ]
+  "id": "<sha256-prefix-of-source-root>",
+  "source_root": "<absolute-path>",
+  "is_git_repo": true,
+  "image": "<docker-image>",
+  "data_dir": "~/.local/share/janus/<id>",
+  "worktrees": [
+    {
+      "id": "<random-hex>",
+      "branch": "<git-branch-name>",
+      "git_worktree_path": "<data_dir>/<id>/tree",
+      "container_id": "janus-<repo-id>-<wt-id>",
+      "created_at": "<RFC3339>"
+    }
+  ]
 }
 ```
-
-**Per-workspace**:
-```json
-{
-  "id":           "<short id>",
-  "name":         "<optional human name>",
-  "created_at":   "<RFC3339>",
-  "container_id": "<docker container name/id or empty>"
-}
-```
-
-Note: `source_root` is recorded but the tool does **not** require it to be a
-git repository or any particular VCS layout.
 
 ---
 
 ## 4. Lifecycle flows
 
-### 4.1 `init`
-1. Accept `--source <path>` (default: current directory).
-2. Compute `workspace_set_id` from the absolute source path (SHA-256 prefix).
-3. Accept `--image <image>` (default: `ubuntu:24.04`).
-4. Create `.agentw/` in the source root.
-5. Write `.agentw/state.json` with the source path, image, and empty workspace
-   list.
-6. No VCS operations.
+### 4.1 `janus init`
+1. Resolve source root (default: cwd).
+2. Detect git repo (`git rev-parse --git-dir`); set `is_git_repo`.
+3. Accept `--image` (default `ubuntu:24.04`).
+4. Write `.janus/state.json`.
 
-### 4.2 `workspace new`
-1. Generate a short `workspace_id`.
-2. Create overlay dirs: `<data_dir>/<workspace_id>/{upper,work,merged}`.
-3. Mount overlayfs: `lowerdir=<source_root>`.
-4. Start Docker container with `-v <merged>:/workspace`.
-5. Record workspace metadata in `state.json`.
-6. Print workspace id, merged path, and how to enter/open.
+### 4.2 `janus new <branch>`
+1. Create state entry with random `id` and given `branch`.
+2. If `is_git_repo`: run `git worktree add [-b] <tree_path> <branch> [<from>]`.
+3. Create overlay dirs (`upper/`, `work/`, `merged/`).
+4. Mount overlayfs (`lowerdir` = git worktree or source root).
+5. Start Docker container.
+6. Persist `container_id` and `git_worktree_path`.
 
-### 4.3 `workspace enter`
-1. Ensure overlay is mounted; remount if needed.
-2. Ensure container is running; start if needed.
-3. `docker exec -it <container> bash`.
+### 4.3 `janus switch <branch>`
+1. Look up worktree by branch; if missing, auto-create via `janus new`.
+2. `EnsureMounted` + `EnsureRunning`.
+3. Open in editor with window reuse.
 
-### 4.4 `workspace exec`
-1. Same "ensure" steps as enter.
-2. `docker exec <container> <cmd...>`.
+### 4.4 `janus enter <branch>`
+1. `EnsureMounted` + `EnsureRunning`.
+2. `docker exec -it <container> bash`.
 
-### 4.5 `workspace open`
-1. Detect or accept editor.
-2. Open `<MERGED>` in the chosen editor on the host.
-
-### 4.6 `workspace rm`
-1. Stop and remove the Docker container.
-2. Unmount the overlayfs.
-3. Delete `<data_dir>/<workspace_id>/`.
-4. Remove workspace entry from `state.json`.
+### 4.5 `janus rm <branch>`
+1. `docker stop` + `docker rm`.
+2. `umount <merged>`.
+3. `git worktree remove --force <tree>` (if git-backed).
+4. `git worktree prune`.
+5. `os.RemoveAll(<data_dir>/<id>)`.
+6. Remove from state.
 
 ---
 
-## 5. Performance characteristics
-- Create workspace: O(1) directory creation + overlay mount + container start
-- Storage: source stored once + per-workspace `upper` stores only changed files
-- Switch workspace: select a different container + different mounted path (instant)
+## 5. Performance
+- Create: O(1) directory creation + overlay mount + container start.
+- Storage: git worktree + per-worktree upper (changed files only).
+- Switch: select different container + different mounted path (instant).
 
 ---
 
-## 6. Minimal "agent" support
-For MVP, "agent = shell commands invoked via `workspace exec`" is sufficient.
-The container is a stable, isolated execution environment; any agentic
-framework can drive it without knowing anything about the underlying filesystem
-mechanism.
+## 6. Privilege model
+overlayfs requires `CAP_SYS_ADMIN`.
 
-Future layers can add:
-- Streaming log capture
-- Artifact extraction
-- Multi-agent parallel execution
+1. **Run with sudo** (minimal, least ergonomic): `sudo janus new main`
+2. **Privileged helper** (recommended): `janus` (unprivileged) ↔ `janus-helper`
+   (root) over Unix socket for mount/unmount only.
+3. **Avoid overlayfs** (not recommended): full copies; loses CoW.
 
 ---
 
-## 7. Minimal privilege model
-overlayfs mounts require `CAP_SYS_ADMIN`.
+## 7. Planned roadmap
 
-Three approaches:
-1. **Run the CLI with sudo** (minimal implementation) — `sudo agentw workspace new`
-2. **Split into a small privileged helper** (recommended for usability) — `agentw`
-   (unprivileged) communicates with `agentw-helper` (root) over a Unix socket
-   for mount/unmount only.
-3. **Avoid overlayfs** — fall back to full copies; loses CoW benefit.
-
-For the minimal implementation, (1) is the smallest; (2) is the recommended next
-step for ergonomics.
-
----
-
-## 8. What we are not reinventing
-- Any VCS (git, mercurial, etc.) — users bring their own
-- Docker container lifecycle and filesystem isolation
-- Linux overlayfs implementation
-
-We only build:
-- Orchestration (create/mount/start/stop/remove)
-- Metadata (state.json)
-- User-facing CLI
-
----
-
-## 9. Planned roadmap
-
-### Phase 0: CLI MVP
-- `init`, `workspace new/ls/enter/exec/open/rm`
-- overlayfs + Docker
+### Phase 0: CLI MVP ✓
+- `init`, `new`, `ls`, `switch`, `enter`, `exec`, `open`, `rm`
+- overlayfs + Docker + git worktrees
 - JSON state file
-- No VCS dependency
 
 ### Phase 1: UX polish
-- Human names, fuzzy selection, default editor detection
-- Auto-repair stale mounts / containers
-- Export / apply file patches (VCS-agnostic)
+- Auto-repair stale mounts/containers
+- Fuzzy branch-name selection
+- Export/apply file patches (VCS-agnostic)
 
 ### Phase 2: VS Code integration (highest priority)
-- Extension to list / switch workspaces
-- Attach Remote - Containers to running container
-- Open `MERGED` folder
+- Extension to list/switch worktrees
+- Auto-attach Remote Containers to running container
+- Show git diff per worktree
 
 ### Phase 3: Vim + Emacs integrations
-- Minimal plugins that shell out to CLI and open terminal sessions
+- Minimal plugins that shell out to `janus` and open terminal sessions
 
 ### Phase 4: Agentic workflows
 - Multi-agent parallel execution
-- Per-workspace event log
+- Per-worktree event log
 - Streaming output capture
 
 ---
 
-## 10. Glossary
-- **Source**: the directory being worked on (any directory; VCS optional).
-- **Base**: the source directory used as the read-only lower layer of overlayfs.
-- **Workspace**: an overlay + container pairing created per agent session.
-- **Upperdir**: writable layer for a workspace (stores only changed files).
-- **Merged**: the mounted view combining base + upper, visible to both container
-  and host editor.
-- **Workspace set**: the collection of workspaces sharing one source directory.
+## 8. Glossary
+- **Repo**: the project being worked on (must be a git repo for full features).
+- **Worktree**: a git branch + overlayfs overlay + Docker container triple.
+- **Git worktree**: the git-managed directory at `<data_dir>/<id>/tree`.
+- **Upperdir**: writable CoW layer (stores only changed files).
+- **Merged**: the overlayfs unified view mounted inside the container.
+

@@ -11,15 +11,15 @@ import (
 
 func TestInitCreatesStateFile(t *testing.T) {
 	dir := t.TempDir()
-	ws, err := state.Init(dir, "ubuntu:24.04")
+	cfg, err := state.Init(dir, "ubuntu:24.04", false)
 	if err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if ws.SourceRoot != dir {
-		t.Errorf("SourceRoot = %q, want %q", ws.SourceRoot, dir)
+	if cfg.SourceRoot != dir {
+		t.Errorf("SourceRoot = %q, want %q", cfg.SourceRoot, dir)
 	}
-	if ws.Image != "ubuntu:24.04" {
-		t.Errorf("Image = %q, want %q", ws.Image, "ubuntu:24.04")
+	if cfg.Image != "ubuntu:24.04" {
+		t.Errorf("Image = %q, want %q", cfg.Image, "ubuntu:24.04")
 	}
 
 	path := state.StatePath(dir)
@@ -30,12 +30,12 @@ func TestInitCreatesStateFile(t *testing.T) {
 
 func TestInitDefaultImage(t *testing.T) {
 	dir := t.TempDir()
-	ws, err := state.Init(dir, state.DefaultImage)
+	cfg, err := state.Init(dir, state.DefaultImage, false)
 	if err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if ws.Image != state.DefaultImage {
-		t.Errorf("Image = %q, want %q", ws.Image, state.DefaultImage)
+	if cfg.Image != state.DefaultImage {
+		t.Errorf("Image = %q, want %q", cfg.Image, state.DefaultImage)
 	}
 }
 
@@ -46,15 +46,26 @@ func TestInitNoGitRequired(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, ".git")); !os.IsNotExist(err) {
 		t.Skip("temp dir unexpectedly contains .git")
 	}
-	_, err := state.Init(dir, state.DefaultImage)
+	_, err := state.Init(dir, state.DefaultImage, false)
 	if err != nil {
 		t.Fatalf("Init should succeed for a non-git directory, got: %v", err)
 	}
 }
 
+func TestInitGitFlag(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := state.Init(dir, state.DefaultImage, true)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if !cfg.IsGitRepo {
+		t.Error("IsGitRepo should be true when passed true")
+	}
+}
+
 func TestLoadRoundtrip(t *testing.T) {
 	dir := t.TempDir()
-	ws, err := state.Init(dir, "myimage:latest")
+	cfg, err := state.Init(dir, "myimage:latest", false)
 	if err != nil {
 		t.Fatalf("Init: %v", err)
 	}
@@ -63,145 +74,165 @@ func TestLoadRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.ID != ws.ID {
-		t.Errorf("ID mismatch: got %q, want %q", loaded.ID, ws.ID)
+	if loaded.ID != cfg.ID {
+		t.Errorf("ID mismatch: got %q, want %q", loaded.ID, cfg.ID)
 	}
-	if loaded.SourceRoot != ws.SourceRoot {
+	if loaded.SourceRoot != cfg.SourceRoot {
 		t.Errorf("SourceRoot mismatch")
 	}
 }
 
-func TestNewWorkspace(t *testing.T) {
+func TestNewWorktree(t *testing.T) {
 	dir := t.TempDir()
-	ws, _ := state.Init(dir, state.DefaultImage)
+	cfg, _ := state.Init(dir, state.DefaultImage, false)
 
-	w, err := state.NewWorkspace(ws, "my-ws")
+	w, err := state.NewWorktree(cfg, "feature-x")
 	if err != nil {
-		t.Fatalf("NewWorkspace: %v", err)
+		t.Fatalf("NewWorktree: %v", err)
 	}
 	if w.ID == "" {
-		t.Error("workspace ID should not be empty")
+		t.Error("worktree ID should not be empty")
 	}
-	if w.Name != "my-ws" {
-		t.Errorf("Name = %q, want %q", w.Name, "my-ws")
+	if w.Branch != "feature-x" {
+		t.Errorf("Branch = %q, want %q", w.Branch, "feature-x")
 	}
 	if w.CreatedAt.IsZero() {
 		t.Error("CreatedAt should be set")
 	}
-	if len(ws.Workspaces) != 1 {
-		t.Errorf("expected 1 workspace, got %d", len(ws.Workspaces))
+	if len(cfg.Worktrees) != 1 {
+		t.Errorf("expected 1 worktree, got %d", len(cfg.Worktrees))
 	}
 
 	// Reload from disk and verify persistence.
 	loaded, _ := state.Load(dir)
-	if len(loaded.Workspaces) != 1 {
-		t.Errorf("expected 1 persisted workspace, got %d", len(loaded.Workspaces))
+	if len(loaded.Worktrees) != 1 {
+		t.Errorf("expected 1 persisted worktree, got %d", len(loaded.Worktrees))
 	}
 }
 
-func TestFindWorkspace(t *testing.T) {
+func TestFindWorktreeByBranch(t *testing.T) {
 	dir := t.TempDir()
-	ws, _ := state.Init(dir, state.DefaultImage)
+	cfg, _ := state.Init(dir, state.DefaultImage, false)
 
-	w1, _ := state.NewWorkspace(ws, "alpha")
-	w2, _ := state.NewWorkspace(ws, "beta")
+	w1, _ := state.NewWorktree(cfg, "main")
+	w2, _ := state.NewWorktree(cfg, "feature-y")
 
-	// Find by exact ID.
-	found, err := state.FindWorkspace(ws, w1.ID)
+	// Find by exact branch name.
+	found, err := state.FindWorktree(cfg, "main")
 	if err != nil {
-		t.Fatalf("FindWorkspace by ID: %v", err)
+		t.Fatalf("FindWorktree by branch: %v", err)
 	}
 	if found.ID != w1.ID {
-		t.Errorf("found wrong workspace")
+		t.Errorf("found wrong worktree by branch")
 	}
 
-	// Find by name.
-	found, err = state.FindWorkspace(ws, "beta")
+	// Find by branch prefix.
+	found, err = state.FindWorktree(cfg, "feature")
 	if err != nil {
-		t.Fatalf("FindWorkspace by name: %v", err)
+		t.Fatalf("FindWorktree by branch prefix: %v", err)
 	}
 	if found.ID != w2.ID {
-		t.Errorf("found wrong workspace by name")
+		t.Errorf("found wrong worktree by branch prefix")
+	}
+}
+
+func TestFindWorktreeByID(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, state.DefaultImage, false)
+
+	w1, _ := state.NewWorktree(cfg, "alpha")
+	_, _ = state.NewWorktree(cfg, "beta")
+
+	// Find by exact ID.
+	found, err := state.FindWorktree(cfg, w1.ID)
+	if err != nil {
+		t.Fatalf("FindWorktree by ID: %v", err)
+	}
+	if found.ID != w1.ID {
+		t.Errorf("found wrong worktree by ID")
 	}
 
 	// Not found.
-	_, err = state.FindWorkspace(ws, "zzznomatch")
+	_, err = state.FindWorktree(cfg, "zzznomatch")
 	if err == nil {
 		t.Error("expected error for no match")
 	}
 }
 
-func TestFindWorkspacePrefixMatch(t *testing.T) {
+func TestFindWorktreeIDPrefixMatch(t *testing.T) {
 	dir := t.TempDir()
-	ws, _ := state.Init(dir, state.DefaultImage)
+	cfg, _ := state.Init(dir, state.DefaultImage, false)
 
-	// Create a workspace and search by a prefix of its ID.
-	w, _ := state.NewWorkspace(ws, "")
+	w, _ := state.NewWorktree(cfg, "")
 	if len(w.ID) < 2 {
 		t.Skip("ID too short for prefix test")
 	}
 	prefix := w.ID[:2]
 
-	found, err := state.FindWorkspace(ws, prefix)
+	found, err := state.FindWorktree(cfg, prefix)
 	if err != nil {
 		t.Fatalf("prefix search: %v", err)
 	}
 	if found.ID != w.ID {
-		t.Errorf("found wrong workspace via prefix")
+		t.Errorf("found wrong worktree via ID prefix")
 	}
 }
 
-func TestUpdateWorkspace(t *testing.T) {
+func TestUpdateWorktree(t *testing.T) {
 	dir := t.TempDir()
-	ws, _ := state.Init(dir, state.DefaultImage)
-	w, _ := state.NewWorkspace(ws, "old-name")
+	cfg, _ := state.Init(dir, state.DefaultImage, false)
+	w, _ := state.NewWorktree(cfg, "old-branch")
 
-	w.Name = "new-name"
+	w.Branch = "new-branch"
 	w.ContainerID = "container-abc"
-	if err := state.UpdateWorkspace(ws, w); err != nil {
-		t.Fatalf("UpdateWorkspace: %v", err)
+	w.GitWorktreePath = "/some/path"
+	if err := state.UpdateWorktree(cfg, w); err != nil {
+		t.Fatalf("UpdateWorktree: %v", err)
 	}
 
 	loaded, _ := state.Load(dir)
-	if loaded.Workspaces[0].Name != "new-name" {
-		t.Errorf("Name not updated")
+	if loaded.Worktrees[0].Branch != "new-branch" {
+		t.Errorf("Branch not updated")
 	}
-	if loaded.Workspaces[0].ContainerID != "container-abc" {
+	if loaded.Worktrees[0].ContainerID != "container-abc" {
 		t.Errorf("ContainerID not updated")
 	}
+	if loaded.Worktrees[0].GitWorktreePath != "/some/path" {
+		t.Errorf("GitWorktreePath not updated")
+	}
 }
 
-func TestRemoveWorkspace(t *testing.T) {
+func TestRemoveWorktree(t *testing.T) {
 	dir := t.TempDir()
-	ws, _ := state.Init(dir, state.DefaultImage)
-	w, _ := state.NewWorkspace(ws, "to-remove")
+	cfg, _ := state.Init(dir, state.DefaultImage, false)
+	w, _ := state.NewWorktree(cfg, "to-remove")
 
-	if err := state.RemoveWorkspace(ws, w.ID); err != nil {
-		t.Fatalf("RemoveWorkspace: %v", err)
+	if err := state.RemoveWorktree(cfg, w.ID); err != nil {
+		t.Fatalf("RemoveWorktree: %v", err)
 	}
-	if len(ws.Workspaces) != 0 {
-		t.Errorf("expected 0 workspaces after remove, got %d", len(ws.Workspaces))
+	if len(cfg.Worktrees) != 0 {
+		t.Errorf("expected 0 worktrees after remove, got %d", len(cfg.Worktrees))
 	}
 
 	loaded, _ := state.Load(dir)
-	if len(loaded.Workspaces) != 0 {
-		t.Errorf("expected 0 persisted workspaces after remove")
+	if len(loaded.Worktrees) != 0 {
+		t.Errorf("expected 0 persisted worktrees after remove")
 	}
 }
 
 func TestOverlayDirs(t *testing.T) {
 	dir := t.TempDir()
-	ws, _ := state.Init(dir, state.DefaultImage)
-	w := state.Workspace{
+	cfg, _ := state.Init(dir, state.DefaultImage, false)
+	w := state.Worktree{
 		ID:        "abcdef",
+		Branch:    "main",
 		CreatedAt: time.Now(),
 	}
-	upper, work, merged := ws.OverlayDirs(w)
+	upper, work, merged := cfg.OverlayDirs(w)
 	if upper == "" || work == "" || merged == "" {
 		t.Error("OverlayDirs returned empty paths")
 	}
-	// All should be under DataDir/workspaceID.
-	base := filepath.Join(ws.DataDir, w.ID)
+	base := filepath.Join(cfg.DataDir, w.ID)
 	if upper != filepath.Join(base, "upper") {
 		t.Errorf("upper = %q, want %q", upper, filepath.Join(base, "upper"))
 	}
@@ -210,6 +241,33 @@ func TestOverlayDirs(t *testing.T) {
 	}
 	if merged != filepath.Join(base, "merged") {
 		t.Errorf("merged = %q", merged)
+	}
+}
+
+func TestLowerDir(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, state.DefaultImage, true)
+
+	// Without git worktree path: falls back to SourceRoot.
+	wNoGit := state.Worktree{ID: "aaa", Branch: "main", CreatedAt: time.Now()}
+	if cfg.LowerDir(wNoGit) != cfg.SourceRoot {
+		t.Errorf("LowerDir without GitWorktreePath should return SourceRoot")
+	}
+
+	// With git worktree path: uses that path.
+	wGit := state.Worktree{ID: "bbb", Branch: "feature", GitWorktreePath: "/some/tree", CreatedAt: time.Now()}
+	if cfg.LowerDir(wGit) != "/some/tree" {
+		t.Errorf("LowerDir with GitWorktreePath should return that path")
+	}
+}
+
+func TestGitWorktreeDir(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, state.DefaultImage, true)
+	w := state.Worktree{ID: "abc123", Branch: "feat", CreatedAt: time.Now()}
+	expected := filepath.Join(cfg.DataDir, "abc123", "tree")
+	if cfg.GitWorktreeDir(w) != expected {
+		t.Errorf("GitWorktreeDir = %q, want %q", cfg.GitWorktreeDir(w), expected)
 	}
 }
 
@@ -222,22 +280,36 @@ func TestLoadMissingFile(t *testing.T) {
 }
 
 func TestInitNonExistentSourceDir(t *testing.T) {
-	_, err := state.Init("/nonexistent/path/to/nowhere", state.DefaultImage)
+	_, err := state.Init("/nonexistent/path/to/nowhere", state.DefaultImage, false)
 	if err == nil {
 		t.Error("expected error for non-existent source directory")
 	}
 }
 
-func TestMultipleWorkspacesPreserved(t *testing.T) {
+func TestMultipleWorktreesPreserved(t *testing.T) {
 	dir := t.TempDir()
-	ws, _ := state.Init(dir, state.DefaultImage)
+	cfg, _ := state.Init(dir, state.DefaultImage, false)
 
-	state.NewWorkspace(ws, "a")
-	state.NewWorkspace(ws, "b")
-	state.NewWorkspace(ws, "c")
+	state.NewWorktree(cfg, "main")
+	state.NewWorktree(cfg, "develop")
+	state.NewWorktree(cfg, "feature-z")
 
 	loaded, _ := state.Load(dir)
-	if len(loaded.Workspaces) != 3 {
-		t.Errorf("expected 3 workspaces, got %d", len(loaded.Workspaces))
+	if len(loaded.Worktrees) != 3 {
+		t.Errorf("expected 3 worktrees, got %d", len(loaded.Worktrees))
 	}
 }
+
+func TestStateFileInJanusDir(t *testing.T) {
+	dir := t.TempDir()
+	state.Init(dir, state.DefaultImage, false) //nolint:errcheck
+	path := state.StatePath(dir)
+	// Must be under .janus/ not .agentw/
+	if filepath.Base(filepath.Dir(path)) != state.StateDir {
+		t.Errorf("state file not inside %s: got %s", state.StateDir, path)
+	}
+	if state.StateDir != ".janus" {
+		t.Errorf("StateDir = %q, want %q", state.StateDir, ".janus")
+	}
+}
+

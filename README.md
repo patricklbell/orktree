@@ -1,36 +1,48 @@
 # janus
-Zero-cost worktrees for agents
+Container worktrees for agents — each branch gets its own isolated workspace.
 
-`agentw` is a minimal Linux CLI that creates isolated container workspaces over a
-shared source directory using overlayfs + Docker.  Each workspace gets its own
-copy-on-write filesystem view and a dedicated Docker container — no git or other
-VCS required.
+`janus` creates a Docker container + overlayfs + git worktree triple for every
+branch you work on.  Switch between them instantly; each gets its own file
+state and running container.
 
 ## Quick start
 
 ```sh
-# Initialise in any directory (no git required)
-agentw init [--source <path>] [--image <docker-image>]
+# In any git repo
+janus init [--image <docker-image>]
 
-# Create a workspace (requires CAP_SYS_ADMIN for the overlay mount)
-sudo agentw workspace new [--name <name>]
+# Create a worktree on a new branch (requires CAP_SYS_ADMIN for the overlay)
+sudo janus new feature-x
 
-# List workspaces
-agentw workspace ls
+# Switch to a branch (auto-creates if needed, reopens editor in-place)
+sudo janus switch feature-x
+
+# List worktrees
+janus ls
 
 # Open interactive shell
-agentw workspace enter <id>
+janus enter feature-x        # or: janus sh feature-x
 
-# Run a command
-agentw workspace exec <id> -- <cmd...>
+# Run a command non-interactively
+janus exec feature-x -- make test
 
 # Open in editor
-agentw workspace open <id> [--editor code|vim|emacs]
+janus open feature-x [--editor code|vim|emacs]
 
-# Remove workspace
-sudo agentw workspace rm <id>
+# Remove worktree (container + overlay + git worktree)
+sudo janus rm feature-x
 ```
 
-`agentw workspace` can be shortened to `agentw ws`.
+### Command aliases
+
+| Full        | Short |
+|-------------|-------|
+| `new`       | `n`   |
+| `switch`    | `sw`  |
+| `enter`     | `sh`  |
+| `rm/remove` | —     |
+| `ls/list`   | —     |
+
+Branch name, full worktree ID, or a unique prefix are all accepted as `<branch>`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.

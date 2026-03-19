@@ -1,4 +1,4 @@
-// Package container manages Docker containers for agentw workspaces.
+// Package container manages Docker containers for janus worktrees.
 package container
 
 import (
@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-// ContainerName returns the Docker container name for the given workspace id.
-func ContainerName(workspaceSetID, workspaceID string) string {
-	return fmt.Sprintf("agentw-%s-%s", workspaceSetID, workspaceID)
+// ContainerName returns the Docker container name for the given worktree id.
+func ContainerName(repoID, worktreeID string) string {
+	return fmt.Sprintf("janus-%s-%s", repoID, worktreeID)
 }
 
 // Start creates and starts a new container for the workspace.
