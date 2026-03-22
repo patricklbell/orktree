@@ -360,10 +360,16 @@ func cmdSwitch(args []string) error {
 	fmt.Printf("  container : %s\n", w.ContainerID)
 	fmt.Printf("  path      : %s\n", merged)
 
-	// Attempt VS Code Dev Containers "Attach to Running Container".
+	// Attempt VS Code Dev Containers integration.
 	if _, err := exec.LookPath("code"); err == nil {
-		uri := attachedContainerURI(w.ContainerID, "/workspace")
-		cmd := exec.Command("code", "--folder-uri", uri)
+		var uri string
+		if hasDevContainer(merged) {
+			uri = devContainerURI(merged, "/workspace")
+			fmt.Println("  devcontainer config detected — opening in Dev Container mode")
+		} else {
+			uri = attachedContainerURI(w.ContainerID, "/workspace")
+		}
+		cmd := exec.Command("code", "-n", "--folder-uri", uri)
 		if err := cmd.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "note: VS Code Dev Containers attach failed (%v)\n", err)
 			fmt.Fprintf(os.Stderr, "      Ensure the Dev Containers extension is installed.\n")
@@ -537,6 +543,37 @@ func attachedContainerURI(containerName, workspacePath string) string {
 		hexBuf[i*2+1] = hexChars[b&0xf]
 	}
 	return fmt.Sprintf("vscode-remote://attached-container+%s%s", hexBuf, workspacePath)
+}
+
+// hasDevContainer reports whether the given directory (or a parent) contains a
+// .devcontainer/devcontainer.json configuration.
+func hasDevContainer(dir string) bool {
+	candidates := []string{
+		filepath.Join(dir, ".devcontainer", "devcontainer.json"),
+		filepath.Join(dir, ".devcontainer.json"),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// devContainerURI returns the VS Code Remote URI for opening a folder
+// in Dev Container mode.  The protocol hex-encodes the absolute folder path:
+//
+//	vscode-remote://dev-container+<hex-encoded-path><workspace>
+//
+// Ref: https://code.visualstudio.com/docs/devcontainers/create-dev-container
+func devContainerURI(folderPath, workspacePath string) string {
+	hexBuf := make([]byte, len(folderPath)*2)
+	const hexChars = "0123456789abcdef"
+	for i, b := range []byte(folderPath) {
+		hexBuf[i*2] = hexChars[b>>4]
+		hexBuf[i*2+1] = hexChars[b&0xf]
+	}
+	return fmt.Sprintf("vscode-remote://dev-container+%s%s", hexBuf, workspacePath)
 }
 
 // ---------------------------------------------------------------------------
