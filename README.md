@@ -6,30 +6,48 @@ with **no file duplication** (copy-on-write via `fuse-overlayfs`).
 triple for every branch.  Only files you actually change consume extra disk;
 the rest is shared read-only with the main checkout.
 
-## One-time setup
+## Installation
 
-Run `janus setup` to verify all prerequisites.  Two groups are required:
+Download the latest binary from the
+[Releases](https://github.com/patricklbell/janus/releases) page:
 
-| Group    | Why                                       | Fix (run once, then log out/in) |
-|----------|-------------------------------------------|---------------------------------|
+```sh
+# Linux amd64
+curl -Lo janus https://github.com/patricklbell/janus/releases/latest/download/janus-linux-amd64
+chmod +x janus
+sudo mv janus /usr/local/bin/
+```
+
+Or install from source with Go (see [Developer instructions](#developer-instructions) below).
+
+## Prerequisites
+
+### Required
+
+| Dependency       | Why                                       | Install                                                      |
+|------------------|-------------------------------------------|--------------------------------------------------------------|
+| **Docker**       | run isolated containers per worktree      | https://docs.docker.com/engine/install/                      |
+| **fuse-overlayfs** | rootless copy-on-write overlay filesystem | `sudo apt-get install fuse-overlayfs` (or `dnf` / `pacman`) |
+| **git**          | worktree management                       | `sudo apt-get install git` (or your package manager)         |
+
+### Required groups
+
+After installing, add your user to the required groups (run once, then log out/in):
+
+| Group    | Why                                       | Fix                              |
+|----------|-------------------------------------------|----------------------------------|
 | `docker` | run containers without sudo               | `sudo usermod -aG docker $USER` |
 | `fuse`   | access `/dev/fuse` for rootless overlayfs | `sudo usermod -aG fuse $USER`   |
 
-`fuse-overlayfs` must also be installed:
+### Optional
 
-```sh
-# Debian/Ubuntu
-sudo apt-get install fuse-overlayfs
+| Dependency                          | Why                                                      |
+|-------------------------------------|----------------------------------------------------------|
+| **VS Code** + Dev Containers extension | `janus switch` can reopen the editor inside the container |
 
-# Fedora/RHEL
-sudo dnf install fuse-overlayfs
+## One-time setup
 
-# Arch
-sudo pacman -S fuse-overlayfs
-```
-
-After installing and running the two `usermod` commands, log out and back in,
-then confirm everything is ready:
+Run `janus setup` to verify all prerequisites:
 
 ```sh
 janus setup   # should show ✓ for all five checks
@@ -71,6 +89,12 @@ No `sudo` required for any of the above commands after the one-time setup.
 feature.  This requires the
 [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
 
+If the worktree contains a `.devcontainer/devcontainer.json` (or
+`.devcontainer.json`), `janus switch` will use the
+[Dev Container](https://code.visualstudio.com/docs/devcontainers/create-dev-container)
+URI scheme instead, allowing VS Code to use the full devcontainer
+configuration (extensions, settings, lifecycle hooks, etc.).
+
 No other editors have an equivalent single-command "reopen in container" flow,
 so `janus switch` only attempts this for VS Code.  For any other editor, use
 `janus enter <branch>` to get a shell inside the container.
@@ -88,3 +112,23 @@ so `janus switch` only attempts this for VS Code.  For any other editor, use
 Branch name, full worktree ID, or a unique prefix are all accepted as `<branch>`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
+
+## Developer instructions
+
+Requires [Go](https://go.dev/dl/) 1.24 or later.
+
+```sh
+# Install directly from source
+go install github.com/patricklbell/janus/cmd/janus@latest
+
+# Or clone and build locally
+git clone https://github.com/patricklbell/janus.git
+cd janus
+go build -o janus ./cmd/janus
+```
+
+Run the tests:
+
+```sh
+go test ./...
+```
