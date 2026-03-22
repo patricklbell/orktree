@@ -20,7 +20,6 @@ jobs:
 
       - name: Build
         run: |
-          VERSION="${GITHUB_REF_NAME}"
           LDFLAGS="-s -w"
           GOOS=linux GOARCH=amd64  go build -ldflags "$LDFLAGS" -o janus-linux-amd64  ./cmd/janus
           GOOS=linux GOARCH=arm64  go build -ldflags "$LDFLAGS" -o janus-linux-arm64  ./cmd/janus
