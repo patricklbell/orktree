@@ -1,5 +1,5 @@
 ---
-description: Coder — takes a single implementation task, creates a orktree worktree, writes and tests code, and commits.
+description: Coder — takes a single implementation task, writes and tests code, and commits.
 tools:
   - read
   - edit

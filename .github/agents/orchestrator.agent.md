@@ -10,7 +10,6 @@ tools:
   - read
   - search
   - agent
-  - execute
 ---
 
 # Orchestrator
@@ -36,7 +35,7 @@ If you provide code to agents, clearly discriminate between psuedocode and real 
 1. Read [AGENTS.md](../../AGENTS.md) and [GOAL.md](../../GOAL.md).
 2. Break the goal into small independent tasks; for each: one-sentence description, agents needed.
 3. Per task: spawn team → collect outputs → spawn reviewer separately → if `CHANGES_REQUESTED`, return to team then re-review.
-4. If multiple branches were created, merge all changes together into a final temporary branch.
+4. If multiple branches were created, have the coder merge all changes together into a final temporary branch.
 4. Report: summary of changes, open risks, suggested next goal.
 
 ## End-of-run output (every run)

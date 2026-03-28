@@ -42,7 +42,7 @@ State is stored in `<repo-name>.orktree/state.json` next to the repository root.
 | `orktree switch <branch> [--from <base>] [--no-git]` | Enter orktree (auto-creates if absent) |
 | `orktree switch -`             | Return to the source root                                |
 | `orktree ls [--quiet]`         | List all orktrees with status and merged path            |
-| `orktree path <branch>`        | Print workspace path (auto-creates if absent)            |
+| `orktree path <branch> [--from <base>] [--no-git]` | Print workspace path (auto-creates if absent) |
 | `orktree rm <branch> [--force]` | Unmount overlay, deregister git worktree, delete state  |
 | `orktree shell-init [--shell bash\|zsh]` | Print shell integration snippet (eval in .bashrc/.zshrc) |
 
