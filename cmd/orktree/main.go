@@ -33,6 +33,7 @@ func run(args []string) error {
 	case "check":
 		return cmdCheck(args[1:])
 	case "new", "n":
+		fmt.Fprintln(os.Stderr, "warning: 'orktree new' is deprecated; use 'orktree switch' instead")
 		return cmdNew(args[1:])
 	case "ls", "list":
 		return cmdLs(args[1:])
@@ -44,6 +45,8 @@ func run(args []string) error {
 		return cmdPath(args[1:])
 	case "shell-init":
 		return cmdShellInit(args[1:])
+	case "completion":
+		return cmdCompletion(args[1:])
 	case "help", "--help", "-h":
 		printUsage()
 		return nil
@@ -94,6 +97,7 @@ func cmdCheck(_ []string) error {
 	fmt.Println()
 	if ok {
 		fmt.Println("All prerequisites satisfied.")
+		fmt.Println("Next: cd into your repo and run 'orktree init'.")
 	} else {
 		fmt.Println("Run the fix commands above (log out and back in after any usermod), then re-run 'orktree check'.")
 		return fmt.Errorf("prerequisites not met")
@@ -127,6 +131,9 @@ func cmdInit(args []string) error {
 			}
 			i++
 			source = args[i]
+		case "--help", "-h":
+			printUsage()
+			return nil
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -148,7 +155,7 @@ func cmdInit(args []string) error {
 		fmt.Printf("  git repo : yes (orktrees will be git-backed)\n")
 	}
 	fmt.Println()
-	fmt.Println("Create an orktree with: orktree new <branch>")
+	fmt.Println("Run 'orktree switch <branch>' to create your first orktree and enter it.")
 	return nil
 }
 
@@ -170,6 +177,10 @@ func cmdNew(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: orktree new <branch> [--from <base>]")
 	}
+	if args[0] == "--help" || args[0] == "-h" {
+		printUsage()
+		return nil
+	}
 	branch := args[0]
 	from := ""
 	noGit := false
@@ -184,6 +195,9 @@ func cmdNew(args []string) error {
 			from = args[i]
 		case "--no-git":
 			noGit = true
+		case "--help", "-h":
+			printUsage()
+			return nil
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -337,31 +351,52 @@ func seedGitFile(treeDir, upper string) error {
 // ls
 // ---------------------------------------------------------------------------
 
-func cmdLs(_ []string) error {
+func cmdLs(args []string) error {
+	quiet := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--quiet", "-q":
+			quiet = true
+		case "--help", "-h":
+			printUsage()
+			return nil
+		default:
+			return fmt.Errorf("unknown flag %q", args[i])
+		}
+	}
+
 	cfg, err := loadFromCwd()
 	if err != nil {
 		return err
 	}
 
 	if len(cfg.Orktrees) == 0 {
-		fmt.Println("No orktrees. Create one with: orktree new <branch>")
+		if !quiet {
+			fmt.Println("No orktrees yet. Run 'orktree switch <branch>' to create one.")
+		}
+		return nil
+	}
+
+	if quiet {
+		for _, w := range cfg.Orktrees {
+			fmt.Println(w.Branch)
+		}
 		return nil
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "BRANCH\tID\tSTATUS\tPATH")
+	fmt.Fprintln(tw, "BRANCH\tSTATUS\tPATH")
 	for _, w := range cfg.Orktrees {
 		_, _, merged := cfg.OverlayDirs(w)
 		mounted, _ := overlay.IsMounted(merged)
 
-		status := "stopped"
+		status := "unmounted"
 		if mounted {
 			status = "mounted"
 		}
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\n",
 			w.Branch,
-			w.ID,
 			status,
 			merged,
 		)
@@ -381,6 +416,10 @@ func cmdSwitch(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: orktree switch <branch> [--from <base>] [--no-git]")
 	}
+	if args[0] == "--help" || args[0] == "-h" {
+		printUsage()
+		return nil
+	}
 
 	branch := args[0]
 	from := ""
@@ -396,6 +435,9 @@ func cmdSwitch(args []string) error {
 			from = args[i]
 		case "--no-git":
 			noGit = true
+		case "--help", "-h":
+			printUsage()
+			return nil
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -404,7 +446,7 @@ func cmdSwitch(args []string) error {
 	// "-" means return to the source root
 	if branch == "-" {
 		if from != "" || noGit {
-			return fmt.Errorf("flags are not valid with '-'")
+			return fmt.Errorf("'orktree switch -' returns to the source root and takes no flags")
 		}
 		cfg, err := loadFromCwd()
 		if err != nil {
@@ -423,7 +465,7 @@ func cmdSwitch(args []string) error {
 
 	w, err := state.FindOrktree(cfg, branch)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "orktree %q not found; creating...\n", branch)
+		fmt.Fprintf(os.Stderr, "No orktree for '%s' — creating it now...\n", branch)
 		// Build args for cmdNew: branch [--from <base>] [--no-git]
 		newArgs := []string{branch}
 		if from != "" {
@@ -466,6 +508,10 @@ func cmdPath(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: orktree path <branch> [--from <base>] [--no-git]")
 	}
+	if args[0] == "--help" || args[0] == "-h" {
+		printUsage()
+		return nil
+	}
 
 	branch := args[0]
 	from := ""
@@ -481,6 +527,9 @@ func cmdPath(args []string) error {
 			from = args[i]
 		case "--no-git":
 			noGit = true
+		case "--help", "-h":
+			printUsage()
+			return nil
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -499,7 +548,7 @@ func cmdPath(args []string) error {
 
 	w, err := state.FindOrktree(cfg, branch)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "orktree %q not found; creating...\n", branch)
+		fmt.Fprintf(os.Stderr, "No orktree for '%s' — creating it now...\n", branch)
 		newArgs := []string{branch}
 		if from != "" {
 			newArgs = append(newArgs, "--from", from)
@@ -533,7 +582,7 @@ func cmdPath(args []string) error {
 // shell-init
 // ---------------------------------------------------------------------------
 
-const bashZshInit = `orktree() {
+const shellWrapper = `orktree() {
   case "$1" in
     switch|sw)
       local _orktree_path
@@ -562,13 +611,243 @@ func cmdShellInit(args []string) error {
 	}
 	switch shell {
 	case "", "bash", "zsh":
-		fmt.Print(bashZshInit)
+		fmt.Print(shellWrapper)
 		return nil
 	case "fish":
 		return fmt.Errorf("fish shell support is not yet implemented")
 	default:
 		return fmt.Errorf("unsupported shell %q; supported: bash, zsh", shell)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// completion
+// ---------------------------------------------------------------------------
+
+const bashCompletionScript = `# Generated by orktree completion bash — do not edit.
+# Regenerate: orktree completion bash > ~/.local/share/bash-completion/completions/orktree
+orktree() {
+  case "$1" in
+    switch|sw)
+      local _orktree_path
+      _orktree_path="$(command orktree path "${@:2}")" && cd "$_orktree_path" || return $?
+      ;;
+    *)
+      command orktree "$@"
+      ;;
+  esac
+}
+
+_orktree_completion() {
+  local cur prev words cword
+  _init_completion 2>/dev/null || {
+    COMPREPLY=(); return
+  }
+
+  if [[ $cword -eq 1 ]]; then
+    COMPREPLY=($(compgen -W "check init switch sw ls list path p rm remove shell-init completion help" -- "$cur"))
+    return
+  fi
+
+  case "${words[1]}" in
+    switch|sw|path|p|new|n|rm|remove)
+      if [[ "$cur" != -* ]]; then
+        local branches
+        branches=$(command orktree ls --quiet 2>/dev/null)
+        COMPREPLY=($(compgen -W "$branches" -- "$cur"))
+        return
+      fi
+      case "${words[1]}" in
+        rm|remove) COMPREPLY=($(compgen -W "--force" -- "$cur")) ;;
+        *)         COMPREPLY=($(compgen -W "--from --no-git" -- "$cur")) ;;
+      esac
+      ;;
+    init)
+      case "$prev" in
+        --source|-s) _filedir -d; return ;;
+      esac
+      COMPREPLY=($(compgen -W "--source" -- "$cur"))
+      ;;
+    shell-init)
+      case "$prev" in
+        --shell) COMPREPLY=($(compgen -W "bash zsh" -- "$cur")); return ;;
+      esac
+      COMPREPLY=($(compgen -W "--shell" -- "$cur"))
+      ;;
+    completion)
+      COMPREPLY=($(compgen -W "bash zsh install" -- "$cur"))
+      ;;
+  esac
+}
+
+complete -F _orktree_completion orktree
+`
+
+const zshCompletionScript = `#compdef orktree
+
+# Generated by orktree completion zsh — do not edit.
+# Regenerate: orktree completion zsh > ~/.local/share/zsh/site-functions/_orktree
+
+# Install the shell wrapper if not already defined (e.g. via shell-init).
+if [[ -z "$functions[orktree]" ]]; then
+orktree() {
+  case "$1" in
+    switch|sw)
+      local _orktree_path
+      _orktree_path="$(command orktree path "${@:2}")" && cd "$_orktree_path" || return $?
+      ;;
+    *)
+      command orktree "$@"
+      ;;
+  esac
+}
+fi
+
+_orktree_branches() {
+  local -a branches
+  branches=(${(f)"$(command orktree ls --quiet 2>/dev/null)"})
+  _describe 'branch' branches
+}
+
+_orktree() {
+  local -a commands
+  commands=(
+    'check:Check prerequisites'
+    'init:Initialise orktree in a directory'
+    'switch:Enter orktree (auto-creates if absent)'
+    'ls:List orktrees'
+    'path:Print workspace path'
+    'rm:Remove orktree'
+    'shell-init:Emit shell integration snippet'
+    'completion:Emit shell completion script'
+    'help:Show help'
+  )
+
+  _arguments -C \
+    '1: :->command' \
+    '*: :->args'
+
+  case $state in
+    command) _describe 'command' commands ;;
+    args)
+      case ${words[2]} in
+        switch|sw|path|p|rm|remove|new|n)
+          case ${words[2]} in
+            rm|remove) _arguments '--force[force removal]' '1:branch:_orktree_branches' ;;
+            *)         _arguments '--from[base branch]:branch:_orktree_branches' '--no-git[skip git registration]' '1:branch:_orktree_branches' ;;
+          esac
+          ;;
+        init)
+          _arguments '--source[source directory]:dir:_files -/' ;;
+        shell-init)
+          _arguments '--shell[shell type]:shell:(bash zsh)' ;;
+        completion)
+          _arguments '1:subcommand:(bash zsh install)' \
+                     '--shell[shell type]:shell:(bash zsh)' ;;
+      esac
+      ;;
+  esac
+}
+
+_orktree
+`
+
+func cmdCompletion(args []string) error {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: orktree completion <bash|zsh|install> [--shell bash|zsh]")
+		return nil
+	}
+	switch args[0] {
+	case "bash":
+		fmt.Print(bashCompletionScript)
+		return nil
+	case "zsh":
+		fmt.Print(zshCompletionScript)
+		return nil
+	case "install":
+		return cmdCompletionInstall(args[1:])
+	default:
+		return fmt.Errorf("unknown completion target %q; use bash, zsh, or install", args[0])
+	}
+}
+
+func cmdCompletionInstall(args []string) error {
+	shell := os.Getenv("SHELL")
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--shell":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--shell requires a value")
+			}
+			i++
+			shell = args[i]
+		default:
+			return fmt.Errorf("unknown flag %q", args[i])
+		}
+	}
+
+	// Normalise: take only the base name of $SHELL.
+	shell = filepath.Base(shell)
+
+	xdgData := os.Getenv("XDG_DATA_HOME")
+	if xdgData == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("determining home directory: %w", err)
+		}
+		xdgData = filepath.Join(home, ".local", "share")
+	}
+
+	var installPath string
+	var script string
+	switch shell {
+	case "bash":
+		installPath = filepath.Join(xdgData, "bash-completion", "completions", "orktree")
+		script = bashCompletionScript
+	case "zsh":
+		installPath = filepath.Join(xdgData, "zsh", "site-functions", "_orktree")
+		script = zshCompletionScript
+	default:
+		return fmt.Errorf("unsupported shell %q; supported: bash, zsh", shell)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(installPath), 0o755); err != nil {
+		return fmt.Errorf("creating completion directory: %w", err)
+	}
+	// Atomic write: temp file then rename.
+	tmp, err := os.CreateTemp(filepath.Dir(installPath), "orktree-completion-*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.WriteString(script); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("writing completion script: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	if err := os.Rename(tmpName, installPath); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("installing completion script: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "✓  Installed %s completion to %s\n", shell, installPath)
+	fmt.Fprintln(os.Stderr, "   Active after opening a new terminal, or run:")
+	fmt.Fprintf(os.Stderr, "     source %s\n", installPath)
+	if shell == "bash" {
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "   NOTE: The cd-on-switch feature requires one source per shell session.")
+		fmt.Fprintln(os.Stderr, "   For reliable cd without pressing TAB first, also add to ~/.bashrc:")
+		fmt.Fprintln(os.Stderr, `     eval "$(orktree shell-init)"`)
+	} else if shell == "zsh" {
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "   Ensure this directory is in fpath before compinit in ~/.zshrc:")
+		fmt.Fprintf(os.Stderr, "     fpath=(%s $fpath)\n", filepath.Dir(installPath))
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -604,10 +883,20 @@ func cmdRm(args []string) error {
 		return fmt.Errorf("usage: orktree rm <branch> [--force]")
 	}
 	ref := args[0]
+	if ref == "--help" || ref == "-h" {
+		printUsage()
+		return nil
+	}
 	force := false
 	for i := 1; i < len(args); i++ {
-		if args[i] == "--force" || args[i] == "-f" {
+		switch args[i] {
+		case "--force", "-f":
 			force = true
+		case "--help", "-h":
+			printUsage()
+			return nil
+		default:
+			return fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 
@@ -643,7 +932,7 @@ func cmdRm(args []string) error {
 		return err
 	}
 
-	fmt.Printf("Removed orktree %s (branch: %s)\n", w.ID, w.Branch)
+	fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", w.Branch)
 	return nil
 }
 
@@ -704,33 +993,33 @@ func cleanEmptyAncestors(path, stopAt string) {
 // ---------------------------------------------------------------------------
 
 func printUsage() {
-	fmt.Print(`orktree - git worktree + fuse-overlayfs manager
+	fmt.Print(`orktree — isolated workspaces for parallel git branches
+Context-switch instantly without stashing, committing, or copying files.
 
-Each orktree is a git branch paired with a fuse-overlayfs CoW mount.
-Only files you actually modify consume extra disk space.
+SHELL INTEGRATION (required for cd-on-switch):
+  eval "$(orktree shell-init)"   # add to ~/.bashrc or ~/.zshrc
+  orktree completion install     # or: install completion script (no bashrc edit needed)
 
 Usage:
   orktree <command> [args...]
 
 Commands:
-  check                                          Check prerequisites
-  init   [--source <path>]                       Initialize orktree in a directory
-  new    <branch> [--from <base>] [--no-git]     Create orktree on <branch>
-  ls                                             List orktrees
-  switch <branch> [--from <base>] [--no-git]     Mount orktree, creating it if needed
-  path   <branch> [--from <base>] [--no-git]    Print workspace path (auto-creates if absent)
-  rm     <branch> [--force]                      Remove orktree
-  shell-init [--shell bash|zsh]                  Print shell integration (eval in .bashrc/.zshrc)
+  check                                       Check prerequisites
+  init   [--source <path>]                    Initialise orktree in a directory
+  switch <branch> [--from <b>] [--no-git]     Enter orktree (auto-creates if absent)
+  switch -                                    Return to the source root
+  ls     [--quiet]                            List orktrees
+  path   <branch> [--from <b>] [--no-git]     Print workspace path (auto-creates if absent)
+  rm     <branch> [--force]                   Remove orktree
+  shell-init [--shell bash|zsh]               Emit shell integration snippet
+  completion <bash|zsh|install>               Emit or install tab-completion script
+
+Flags:
+  --from <branch|ref>    Base orktree on this branch or git ref
+  --no-git               Skip git worktree registration (overlay-only)
+  --force                Force removal even if unmount fails
 
 Aliases:
-  n      alias for new
-  sw     alias for switch
-  p      alias for path
-  remove alias for rm
-  list   alias for ls
-
-Shell integration:
-  eval "$(orktree shell-init)"    # add to ~/.bashrc or ~/.zshrc
-  # then: orktree switch <branch>  will cd to the workspace automatically
+  sw → switch,  p → path,  remove → rm,  list → ls,  n → new (deprecated)
 `)
 }
