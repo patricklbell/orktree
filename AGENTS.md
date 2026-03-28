@@ -29,29 +29,32 @@ State is stored in `.orktree/state.json` at the repository root.
 |-------------------------------|----------------------------------------------------------|
 | `orktree check`                | Check prerequisites; print fix commands for missing ones |
 | `orktree init [--source <dir>]` | Initialise orktree in a directory (creates `.orktree/state.json`) |
-| `orktree new <branch> [--from <base>] [--no-git]` | Create an orktree on `<branch>` |
-| `orktree ls`                   | List all orktrees with status and merged path            |
-| `orktree switch <branch>`      | Ensure orktree is mounted; auto-creates if absent        |
+| `orktree switch <branch> [--from <base>] [--no-git]` | Enter orktree (auto-creates if absent) |
+| `orktree switch -`             | Return to the source root                                |
+| `orktree ls [--quiet]`         | List all orktrees with status and merged path            |
+| `orktree path <branch>`        | Print workspace path (auto-creates if absent)            |
 | `orktree rm <branch> [--force]` | Unmount overlay, deregister git worktree, delete state  |
+| `orktree shell-init [--shell bash\|zsh]` | Print shell integration snippet (eval in .bashrc/.zshrc) |
 
 `<branch>` accepts: exact branch name, full orktree ID, or a unique prefix.
+`orktree new` is a deprecated alias for `orktree switch`.
 
 ### Zero-cost orktrees
 
-By default `orktree new` is zero-cost: the existing checkout (or another
+By default `orktree switch` is zero-cost: the existing checkout (or another
 orktree's `merged/` view) is used as the overlayfs lowerdir — no files are
 copied.  Pass `--from <git-ref>` to branch from a specific commit that isn't
 represented by any existing orktree.
 
 ```sh
 # Branch from source root (zero-cost)
-orktree new fix-parser
+orktree switch fix-parser
 
 # Stack on top of an existing orktree (zero-cost)
-orktree new fix-parser-v2 --from fix-parser
+orktree switch fix-parser-v2 --from fix-parser
 
 # Branch from an older commit (conventional checkout)
-orktree new hotfix --from v1.2.3
+orktree switch hotfix --from v1.2.3
 ```
 
 ---
@@ -64,6 +67,8 @@ internal/git/git.go          ← git worktree helpers
 internal/overlay/overlay.go  ← fuse-overlayfs mount/unmount helpers
 internal/state/state.go      ← JSON state read/write + path helpers
 internal/state/state_test.go ← state unit tests
+doc/*.1.md                   ← man page sources (pandoc markdown)
+Makefile                     ← build, test, man page generation, install
 ```
 
 ---
@@ -74,6 +79,9 @@ internal/state/state_test.go ← state unit tests
 go build ./...          # compile
 go test ./...           # run all tests
 go vet ./...            # static analysis
+make                    # build binary (output: ./orktree)
+make man                # generate man pages (requires pandoc)
+make install            # install binary + man pages to $PREFIX (~/.local)
 ```
 
 The module path is `github.com/patricklbell/orktree` (Go 1.23+).

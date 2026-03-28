@@ -168,6 +168,37 @@ func TestUpdateWorktree(t *testing.T) {
 	}
 }
 
+func TestDependents(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, false)
+
+	base, _ := state.NewOrktree(cfg, "base")
+	child1, _ := state.NewOrktree(cfg, "child1")
+	child1.LowerOrktreeBranch = base.Branch
+	state.UpdateOrktree(cfg, child1)
+
+	child2, _ := state.NewOrktree(cfg, "child2")
+	child2.LowerOrktreeBranch = base.Branch
+	state.UpdateOrktree(cfg, child2)
+
+	// unrelated has no parent
+	state.NewOrktree(cfg, "unrelated")
+
+	deps := state.Dependents(cfg, "base")
+	if len(deps) != 2 {
+		t.Fatalf("expected 2 dependents, got %d", len(deps))
+	}
+	got := map[string]bool{deps[0].Branch: true, deps[1].Branch: true}
+	if !got["child1"] || !got["child2"] {
+		t.Errorf("unexpected dependents: %v", deps)
+	}
+
+	// No dependents for unrelated.
+	if deps := state.Dependents(cfg, "unrelated"); len(deps) != 0 {
+		t.Errorf("expected 0 dependents for unrelated, got %d", len(deps))
+	}
+}
+
 func TestRemoveWorktree(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)

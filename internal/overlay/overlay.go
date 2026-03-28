@@ -6,6 +6,7 @@
 package overlay
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -30,21 +31,31 @@ func Create(upper, work, merged string) error {
 func Mount(source, upper, work, merged string) error {
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", source, upper, work)
 	cmd := exec.Command("fuse-overlayfs", "-o", opts, merged)
+	var errBuf bytes.Buffer
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = &errBuf
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("mounting overlay: %w", err)
+		return fmt.Errorf("mounting overlay: %s: %w", strings.TrimSpace(errBuf.String()), err)
 	}
 	return nil
 }
 
 // Unmount unmounts the merged directory.
 func Unmount(merged string) error {
+	var errBuf bytes.Buffer
 	cmd := exec.Command("fusermount", "-u", merged)
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = &errBuf
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("unmounting overlay %s: %w", merged, err)
+		// Lazy unmount detaches the mount immediately; the kernel cleans up
+		// once the last reference (e.g. a shell whose cwd is inside) drops.
+		var lazyBuf bytes.Buffer
+		lazyCmd := exec.Command("fusermount", "-uz", merged)
+		lazyCmd.Stderr = &lazyBuf
+		if lazyErr := lazyCmd.Run(); lazyErr != nil {
+			return fmt.Errorf("unmounting overlay %s: %s (lazy: %v): %w", merged, strings.TrimSpace(errBuf.String()), lazyErr, err)
+		}
+		fmt.Fprintf(os.Stderr, "warning: lazy unmount for %s \u2014 a process still references the mount\n", merged)
 	}
 	return nil
 }
