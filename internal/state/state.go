@@ -162,6 +162,18 @@ func RemoveOrktree(cfg *Config, id string) error {
 	return fmt.Errorf("orktree %q not found", id)
 }
 
+// Dependents returns all orktrees whose LowerOrktreeBranch matches branch,
+// i.e. orktrees that directly depend on the given branch as their overlay base.
+func Dependents(cfg *Config, branch string) []Orktree {
+	var deps []Orktree
+	for _, w := range cfg.Orktrees {
+		if w.LowerOrktreeBranch == branch {
+			deps = append(deps, w)
+		}
+	}
+	return deps
+}
+
 // FindOrktree returns the orktree matching ref by ID, branch name, or prefix.
 func FindOrktree(cfg *Config, ref string) (Orktree, error) {
 	// Exact ID match.

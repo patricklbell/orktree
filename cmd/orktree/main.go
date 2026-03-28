@@ -528,18 +528,15 @@ func cmdRm(args []string) error {
 
 	upper, work, merged := cfg.OverlayDirs(w)
 
-	// Refuse to remove an orktree that another orktree depends on as lowerdir.
-	for _, other := range cfg.Orktrees {
-		if other.ID == w.ID {
-			continue
+	// Only direct dependents are checked; transitive deps are the user's
+	// responsibility when using --force.
+	deps := state.Dependents(cfg, w.Branch)
+	for _, dep := range deps {
+		if !force {
+			return fmt.Errorf("orktree %q is used as base by %q; remove %q first or use --force",
+				w.Branch, dep.Branch, dep.Branch)
 		}
-		if other.LowerOrktreeBranch == w.Branch {
-			if !force {
-				return fmt.Errorf("orktree %q is used as base by %q; remove %q first or use --force",
-					w.Branch, other.Branch, other.Branch)
-			}
-			fmt.Fprintf(os.Stderr, "warning: orktree %q is used as base by %q\n", w.Branch, other.Branch)
-		}
+		fmt.Fprintf(os.Stderr, "warning: orktree %q is used as base by %q\n", w.Branch, dep.Branch)
 	}
 
 	// Unmount and remove the fuse-overlayfs (also deletes upper/work/merged).

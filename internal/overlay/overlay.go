@@ -51,11 +51,11 @@ func Unmount(merged string) error {
 		// once the last reference (e.g. a shell whose cwd is inside) drops.
 		var lazyBuf bytes.Buffer
 		lazyCmd := exec.Command("fusermount", "-uz", merged)
-		lazyCmd.Stdout = os.Stdout
 		lazyCmd.Stderr = &lazyBuf
 		if lazyErr := lazyCmd.Run(); lazyErr != nil {
-			return fmt.Errorf("unmounting overlay %s: %s: %w", merged, strings.TrimSpace(errBuf.String()), err)
+			return fmt.Errorf("unmounting overlay %s: %s (lazy: %v): %w", merged, strings.TrimSpace(errBuf.String()), lazyErr, err)
 		}
+		fmt.Fprintf(os.Stderr, "warning: lazy unmount for %s \u2014 a process still references the mount\n", merged)
 	}
 	return nil
 }
