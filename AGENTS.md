@@ -34,6 +34,7 @@ State is stored in `.orktree/state.json` at the repository root.
 | `orktree ls [--quiet]`         | List all orktrees with status and merged path            |
 | `orktree path <branch>`        | Print workspace path (auto-creates if absent)            |
 | `orktree rm <branch> [--force]` | Unmount overlay, deregister git worktree, delete state  |
+| `orktree shell-init [--shell bash\|zsh]` | Print shell integration snippet (eval in .bashrc/.zshrc) |
 
 `<branch>` accepts: exact branch name, full orktree ID, or a unique prefix.
 `orktree new` is a deprecated alias for `orktree switch`.
@@ -66,6 +67,8 @@ internal/git/git.go          ← git worktree helpers
 internal/overlay/overlay.go  ← fuse-overlayfs mount/unmount helpers
 internal/state/state.go      ← JSON state read/write + path helpers
 internal/state/state_test.go ← state unit tests
+doc/*.1.md                   ← man page sources (pandoc markdown)
+Makefile                     ← build, test, man page generation, install
 ```
 
 ---
@@ -76,6 +79,9 @@ internal/state/state_test.go ← state unit tests
 go build ./...          # compile
 go test ./...           # run all tests
 go vet ./...            # static analysis
+make                    # build binary (output: ./orktree)
+make man                # generate man pages (requires pandoc)
+make install            # install binary + man pages to $PREFIX (~/.local)
 ```
 
 The module path is `github.com/patricklbell/orktree` (Go 1.23+).

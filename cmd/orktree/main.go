@@ -535,7 +535,7 @@ const shellFunc = `orktree() {
   case "$1" in
     switch|sw)
       local _orktree_path
-      _orktree_path="$(command orktree switch --path "${@:2}")" || return $?
+      _orktree_path="$(command orktree switch "${@:2}" --path)" || return $?
       cd "$_orktree_path" || return $?
       ;;
     *)
@@ -765,6 +765,11 @@ func cmdRm(args []string) error {
 	for i := 1; i < len(args); i++ {
 		if args[i] == "--force" || args[i] == "-f" {
 			force = true
+		} else if args[i] == "--help" || args[i] == "-h" {
+			fmt.Println("Usage: orktree rm <branch> [--force]\n\nRemove an orktree (unmount overlay, deregister git worktree, delete state).")
+			return nil
+		} else {
+			return fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 

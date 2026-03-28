@@ -90,4 +90,4 @@ Run **orktree check** to verify:
 
 # SEE ALSO
 
-**orktree-switch**(1), **orktree-rm**(1), **git-worktree**(1), **fuse-overlayfs**(1)
+**orktree-switch**(1), **orktree-init**(1), **orktree-ls**(1), **orktree-path**(1), **orktree-rm**(1), **orktree-check**(1), **git-worktree**(1), **fuse-overlayfs**(1)

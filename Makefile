@@ -1,3 +1,4 @@
+# Man page generation requires pandoc (https://pandoc.org)
 PREFIX ?= $(HOME)/.local
 
 GO_FILES := $(shell find . -name '*.go')

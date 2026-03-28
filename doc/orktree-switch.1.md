@@ -21,7 +21,7 @@ orktree-switch - enter an orktree workspace
 Enter an orktree for the given branch. If no orktree exists for the branch,
 one is created automatically.
 
-When shell integration is active (see **orktree-shell-init**(1)), this command
+When shell integration is active (see **orktree**(1)), this command
 also changes the working directory to the orktree workspace.
 
 # OPTIONS
