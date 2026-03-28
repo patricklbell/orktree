@@ -742,8 +742,11 @@ _orktree() {
         shell-init)
           _arguments '--shell[shell type]:shell:(bash zsh)' ;;
         completion)
-          _arguments '1:subcommand:(bash zsh install)' \
-                     '--shell[shell type]:shell:(bash zsh)' ;;
+          case ${words[3]} in
+            install) _arguments '--shell[shell type]:shell:(bash zsh)' ;;
+            *) _arguments '1:subcommand:(bash zsh install)' ;;
+          esac
+          ;;
       esac
       ;;
   esac
@@ -754,8 +757,7 @@ _orktree
 
 func cmdCompletion(args []string) error {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: orktree completion <bash|zsh|install> [--shell bash|zsh]")
-		return nil
+		return fmt.Errorf("usage: orktree completion <bash|zsh|install>")
 	}
 	switch args[0] {
 	case "bash":
@@ -786,6 +788,9 @@ func cmdCompletionInstall(args []string) error {
 		}
 	}
 
+	if shell == "" {
+		return fmt.Errorf("$SHELL is unset; use --shell bash or --shell zsh")
+	}
 	// Normalise: take only the base name of $SHELL.
 	shell = filepath.Base(shell)
 
