@@ -218,3 +218,24 @@ func TestCompletion_zsh(t *testing.T) {
 		t.Error("zsh completion missing #compdef header")
 	}
 }
+
+func TestCompletion_noArgs(t *testing.T) {
+	err := run([]string{"completion"})
+	if err == nil {
+		t.Fatal("expected error for completion with no args")
+	}
+	if !strings.Contains(err.Error(), "usage: orktree completion") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestCompletionInstall_noShell(t *testing.T) {
+	t.Setenv("SHELL", "")
+	err := cmdCompletionInstall(nil)
+	if err == nil {
+		t.Fatal("expected error when $SHELL is unset")
+	}
+	if !strings.Contains(err.Error(), "$SHELL is unset") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
