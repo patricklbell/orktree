@@ -3,10 +3,19 @@ package state_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/patricklbell/orktree/internal/state"
 )
+
+func TestSiblingDir(t *testing.T) {
+	got := state.SiblingDir("/projects/myrepo")
+	want := "/projects/myrepo.orktree"
+	if got != want {
+		t.Errorf("SiblingDir = %q, want %q", got, want)
+	}
+}
 
 func TestInitCreatesStateFile(t *testing.T) {
 	dir := t.TempDir()
@@ -21,6 +30,21 @@ func TestInitCreatesStateFile(t *testing.T) {
 	path := state.StatePath(dir)
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("state file not created at %s: %v", path, err)
+	}
+
+	// Sibling dir must exist.
+	sib := state.SiblingDir(dir)
+	if _, err := os.Stat(sib); err != nil {
+		t.Errorf("sibling dir not created at %s: %v", sib, err)
+	}
+
+	// .gitignore must exist and contain "*".
+	gi, err := os.ReadFile(filepath.Join(sib, ".gitignore"))
+	if err != nil {
+		t.Fatalf(".gitignore not created: %v", err)
+	}
+	if !strings.Contains(string(gi), "*") {
+		t.Errorf(".gitignore does not contain '*': %q", gi)
 	}
 }
 
@@ -47,9 +71,6 @@ func TestLoadRoundtrip(t *testing.T) {
 	loaded, err := state.Load(dir)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
-	}
-	if loaded.ID != cfg.ID {
-		t.Errorf("ID mismatch: got %q, want %q", loaded.ID, cfg.ID)
 	}
 	if loaded.SourceRoot != cfg.SourceRoot {
 		t.Errorf("SourceRoot mismatch")
@@ -214,5 +235,27 @@ func TestRemoveWorktree(t *testing.T) {
 	loaded, _ := state.Load(dir)
 	if len(loaded.Orktrees) != 0 {
 		t.Errorf("expected 0 persisted orktrees after remove")
+	}
+}
+
+func TestOverlayDirs(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, false)
+	sib := state.SiblingDir(dir)
+
+	// Simple branch: merged path should be <sibling>/<branch>
+	w1, _ := state.NewOrktree(cfg, "main")
+	_, _, merged := cfg.OverlayDirs(w1)
+	wantMerged := filepath.Join(sib, "main")
+	if merged != wantMerged {
+		t.Errorf("merged = %q, want %q", merged, wantMerged)
+	}
+
+	// Branch with slash: merged path should be nested
+	w2, _ := state.NewOrktree(cfg, "feature/my-branch")
+	_, _, merged2 := cfg.OverlayDirs(w2)
+	wantMerged2 := filepath.Join(sib, "feature", "my-branch")
+	if merged2 != wantMerged2 {
+		t.Errorf("merged = %q, want %q", merged2, wantMerged2)
 	}
 }

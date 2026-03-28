@@ -12,14 +12,24 @@ repository. Each orktree is a git branch paired with a
 only files you actually modify consume extra disk space.
 
 ```
-~/.local/share/orktree/<repo-id>/<orktree-id>/
-  tree/    ← git worktree registration (.git gitfile; no checkout for zero-cost orktrees)
-  upper/   ← copy-on-write writes (overlayfs upperdir; contains .git gitfile override)
-  work/    ← overlayfs workdir
-  merged/  ← unified view (work here)
+<repo-parent>/
+  <repo-name>/          ← git checkout (work here)
+  <repo-name>.orktree/  ← all orktree data (gitignored)
+    state.json
+    .gitignore           ← contains "*"; prevents tracking by parent git repo
+    .overlayfs/          ← overlayfs internals
+      <orktree-id>/
+        tree/            ← git worktree registration
+        upper/           ← CoW writes (overlayfs upperdir)
+        work/            ← overlayfs workdir
+    <branch-name>/       ← merged view — cd here to work on a branch
 ```
 
-State is stored in `.orktree/state.json` at the repository root.
+For a submodule at `/projects/mainrepo/libs/mylib`, orktree data goes to
+`/projects/mainrepo/libs/mylib.orktree/` — inside the parent repo's tree, but
+excluded from git tracking by the `.gitignore`.
+
+State is stored in `<repo-name>.orktree/state.json` next to the repository root.
 
 ---
 
@@ -37,6 +47,8 @@ State is stored in `.orktree/state.json` at the repository root.
 | `orktree shell-init [--shell bash\|zsh]` | Print shell integration snippet (eval in .bashrc/.zshrc) |
 
 `<branch>` accepts: exact branch name, full orktree ID, or a unique prefix.
+Branch names containing `/` (e.g. `feature/my-branch`) create nested directories
+inside the sibling dir (e.g. `myrepo.orktree/feature/my-branch/`).
 `orktree new` is a deprecated alias for `orktree switch`.
 
 ### Zero-cost orktrees

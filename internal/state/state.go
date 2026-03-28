@@ -2,7 +2,6 @@
 package state
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -11,17 +10,12 @@ import (
 	"time"
 )
 
-const (
-	StateDir  = ".orktree"
-	StateFile = "state.json"
-)
+const StateFile = "state.json"
 
-// Config is the top-level metadata stored in .orktree/state.json.
+// Config is the top-level metadata stored in <repo>.orktree/state.json.
 type Config struct {
-	ID         string    `json:"id"`
 	SourceRoot string    `json:"source_root"`
 	IsGitRepo  bool      `json:"is_git_repo"`
-	DataDir    string    `json:"data_dir"`
 	Orktrees   []Orktree `json:"orktrees"`
 }
 
@@ -46,9 +40,15 @@ type Orktree struct {
 	CreatedAt          time.Time `json:"created_at"`
 }
 
-// StatePath returns the path to the state file inside sourceRoot.
+// SiblingDir returns the path to the orktree data directory that sits next to
+// sourceRoot: /path/to/myrepo → /path/to/myrepo.orktree
+func SiblingDir(sourceRoot string) string {
+	return filepath.Join(filepath.Dir(sourceRoot), filepath.Base(sourceRoot)+".orktree")
+}
+
+// StatePath returns the path to the state file in the sibling dir for sourceRoot.
 func StatePath(sourceRoot string) string {
-	return filepath.Join(sourceRoot, StateDir, StateFile)
+	return filepath.Join(SiblingDir(sourceRoot), StateFile)
 }
 
 // Load reads the state file from the given source root.
@@ -94,7 +94,8 @@ func Save(cfg *Config) error {
 }
 
 // Init creates a new Config for the given source root.
-// It derives the data directory from XDG_DATA_HOME (or ~/.local/share).
+// It creates a sibling directory (<repo>.orktree/) next to the source root and
+// writes a .gitignore there to prevent any parent git repo from tracking its contents.
 func Init(sourceRoot string, isGitRepo bool) (*Config, error) {
 	abs, err := filepath.Abs(sourceRoot)
 	if err != nil {
@@ -108,21 +109,23 @@ func Init(sourceRoot string, isGitRepo bool) (*Config, error) {
 		return nil, fmt.Errorf("source path is not a directory: %s", abs)
 	}
 
-	id := repoID(abs)
-	dataDir := dataHome(id)
+	sib := SiblingDir(abs)
+	if err := os.MkdirAll(sib, 0o755); err != nil {
+		return nil, fmt.Errorf("creating sibling dir: %w", err)
+	}
+
+	// Prevent any parent git repo from accidentally tracking orktree internals.
+	gitignorePath := filepath.Join(sib, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte("*\n"), 0o644); err != nil {
+		return nil, fmt.Errorf("writing .gitignore: %w", err)
+	}
 
 	cfg := &Config{
-		ID:         id,
 		SourceRoot: abs,
 		IsGitRepo:  isGitRepo,
-		DataDir:    dataDir,
 		Orktrees:   []Orktree{},
 	}
 
-	stateDir := filepath.Join(abs, StateDir)
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		return nil, fmt.Errorf("creating state dir: %w", err)
-	}
 	if err := Save(cfg); err != nil {
 		return nil, err
 	}
@@ -215,13 +218,18 @@ func FindOrktree(cfg *Config, ref string) (Orktree, error) {
 // is stored.  For zero-cost orktrees this directory contains only a .git gitfile
 // (no checkout); for conventional orktrees it is the full checkout used as lowerdir.
 func (c *Config) GitTreeDir(w Orktree) string {
-	return filepath.Join(c.DataDir, w.ID, "tree")
+	return filepath.Join(SiblingDir(c.SourceRoot), ".overlayfs", w.ID, "tree")
 }
 
 // OverlayDirs returns the upper, work, and merged directory paths for w.
+// Branches containing "/" (e.g. "feature/my-branch") produce nested merged paths.
 func (c *Config) OverlayDirs(w Orktree) (upper, work, merged string) {
-	base := filepath.Join(c.DataDir, w.ID)
-	return filepath.Join(base, "upper"), filepath.Join(base, "work"), filepath.Join(base, "merged")
+	sib := SiblingDir(c.SourceRoot)
+	hidden := filepath.Join(sib, ".overlayfs", w.ID)
+	// filepath.FromSlash translates branches like "feature/my-branch" into
+	// nested directories, matching how users expect them to appear.
+	merged = filepath.Join(sib, filepath.FromSlash(w.Branch))
+	return filepath.Join(hidden, "upper"), filepath.Join(hidden, "work"), merged
 }
 
 // MountPath returns the overlayfs lowerdir for w.
@@ -237,25 +245,9 @@ func (c *Config) MountPath(w Orktree) string {
 	return c.SourceRoot
 }
 
-// repoID returns a short hex string derived from the source root path.
-func repoID(sourceRoot string) string {
-	h := sha256.Sum256([]byte(sourceRoot))
-	return fmt.Sprintf("%x", h[:8])
-}
-
 // newID returns a random 6-character hex id.
 func newID() string {
 	b := make([]byte, 3)
 	rand.Read(b) //nolint:gosec // ids need not be cryptographically random
 	return fmt.Sprintf("%x", b)
-}
-
-// dataHome returns the XDG data home path for the given repo id.
-func dataHome(id string) string {
-	base := os.Getenv("XDG_DATA_HOME")
-	if base == "" {
-		home, _ := os.UserHomeDir()
-		base = filepath.Join(home, ".local", "share")
-	}
-	return filepath.Join(base, "orktree", id)
 }
