@@ -114,6 +114,10 @@ func CreateBranch(repoRoot, branch, from string) error {
 // already-existing branch without checking out any files.  Only a .git gitfile
 // is written to worktreePath.  This is the zero-cost path: the actual file tree
 // is supplied via a fuse-overlayfs lowerdir rather than a fresh checkout.
+//
+// After registration, the worktree index is populated via `git read-tree HEAD`
+// so that `git status` reports no untracked files even though overlayfs makes
+// all source files visible in the working tree.
 func AddWorktreeNoCheckout(repoRoot, worktreePath, branch string) error {
 	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
 		return fmt.Errorf("creating worktree path %s: %w", worktreePath, err)
@@ -123,6 +127,15 @@ func AddWorktreeNoCheckout(repoRoot, worktreePath, branch string) error {
 	cmd.Stderr = &errBuf
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git worktree add --no-checkout: %w\n%s", err, strings.TrimSpace(errBuf.String()))
+	}
+	// Populate the index so it matches HEAD. Without this the worktree index is
+	// empty and `git status` reports every file visible via overlayfs as
+	// untracked.
+	var rtBuf bytes.Buffer
+	rtCmd := exec.Command("git", "-C", worktreePath, "read-tree", "HEAD")
+	rtCmd.Stderr = &rtBuf
+	if err := rtCmd.Run(); err != nil {
+		return fmt.Errorf("git read-tree HEAD: %w\n%s", err, strings.TrimSpace(rtBuf.String()))
 	}
 	return nil
 }
