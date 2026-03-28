@@ -112,3 +112,8 @@ The module path is `github.com/patricklbell/orktree` (Go 1.23+).
 - **Constant rationale**: explain magic numbers — whether derived, measured, or chosen arbitrarily.
 
 **Commit messages** should capture *why* the codebase changed, not just *what* changed.  For non-trivial commits follow **Problem → Solution → Implications**: what forced the change, the key design decisions, and noteworthy trade-offs or surprises.  Each commit should be one coherent change; use `git add -p` to keep refactoring, features, and fixes separate.
+
+
+## Actions
+- If documentation is out of date, update it.
+- If you find code or documentation which does not meet the standards of this document, fix it.
