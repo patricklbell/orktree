@@ -1,5 +1,5 @@
 ---
-description: UX reviewer — evaluates CLI ergonomics, flag names, error messages, and help text. Produces no code.
+description: UX reviewer — evaluates user experiences, CLI ergonomics, flag names, error messages, and help text. Produces no code.
 tools:
   - read
   - search
@@ -13,6 +13,7 @@ user-invocable: false
 Inputs: `TASK` (scope), `BRANCH`. Produces a prioritised issue list — no code.
 
 1. Run `orktree --help`, `orktree <cmd> --help`, and error paths.
+2. Check: user flow to achieve common task is intuitive and is not tedious.
 2. Check: flag names consistent and POSIX; errors say what went wrong and how to fix it; help text complete; output scannable.
 3. Prioritise: **P1** confusing/broken · **P2** annoying · **P3** polish.
 

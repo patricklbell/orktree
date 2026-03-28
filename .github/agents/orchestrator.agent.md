@@ -23,7 +23,7 @@ Plan, delegate, integrate. Never write code, designs, or analysis — delegate e
 | `#file:coder.agent.md` | Code, fixes, tests |
 | `#file:debugger.agent.md` | Root-cause a bug |
 | `#file:designer.agent.md` | Architecture decisions |
-| `#file:ux-reviewer.agent.md` | CLI ergonomics |
+| `#file:ux-reviewer.agent.md` | User experience improvements |
 | `#file:reviewer.agent.md` | Quality gate — always independent, always last |
 
 No-code agents (debugger, designer, ux-reviewer) run **before** the coder on the same task and may run in parallel with each other.
