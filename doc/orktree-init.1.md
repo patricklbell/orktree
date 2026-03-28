@@ -17,8 +17,9 @@ orktree-init - initialize orktree in a directory
 # DESCRIPTION
 
 Initialize orktree metadata in the given directory (or the current directory).
-Creates **.orktree/state.json** and sets up the data directory under
-**$XDG_DATA_HOME/orktree/** (defaults to **~/.local/share/orktree/**).
+Creates a **\<repo\>.orktree/** directory next to the source root containing
+**state.json** and a **.gitignore** that prevents the directory from being
+tracks by any enclosing git repository.
 
 If the directory is a git repository, orktrees will be git-backed
 (each orktree gets its own branch and worktree registration).

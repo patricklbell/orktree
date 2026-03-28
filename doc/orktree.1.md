@@ -82,11 +82,15 @@ Run **orktree check** to verify:
 
 # FILES
 
-**~/.local/share/orktree/**
-: Default data directory (respects $XDG_DATA_HOME).
+**\<repo\>.orktree/**
+: Sibling directory created next to the source root. Contains state.json,
+  the .overlayfs/ internals, and one merged-view directory per branch.
 
-**.orktree/state.json**
+**\<repo\>.orktree/state.json**
 : Per-repository orktree state.
+
+**\<repo\>.orktree/.overlayfs/\<id\>/**
+: Internal fuse-overlayfs upper, work, and git worktree registration directories.
 
 # SEE ALSO
 

@@ -473,6 +473,12 @@ func cmdPath(args []string) error {
 		return err
 	}
 
+	// "-" means source root — used by the shell wrapper for "orktree switch -"
+	if branch == "-" {
+		fmt.Println(cfg.SourceRoot)
+		return nil
+	}
+
 	w, err := state.FindOrktree(cfg, branch)
 	if err != nil {
 		return err
