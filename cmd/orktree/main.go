@@ -222,18 +222,18 @@ func cmdNew(args []string) error {
 		return fmt.Errorf("%w\n(hint: run 'orktree check' to check prerequisites)", err)
 	}
 
-	fmt.Printf("Created orktree %s (branch: %s)\n", w.ID, w.Branch)
-	fmt.Printf("  path      : %s\n", merged)
+	fmt.Fprintf(os.Stderr, "Created orktree %s (branch: %s)\n", w.ID, w.Branch)
+	fmt.Fprintf(os.Stderr, "  path      : %s\n", merged)
 	if w.LowerOrktreeBranch != "" {
-		fmt.Printf("  based on  : %s (zero-cost stacking)\n", w.LowerOrktreeBranch)
+		fmt.Fprintf(os.Stderr, "  based on  : %s (zero-cost stacking)\n", w.LowerOrktreeBranch)
 	} else if w.GitTreePath != "" && w.LowerDir == cfg.SourceRoot {
-		fmt.Printf("  based on  : source root (zero-cost)\n")
+		fmt.Fprintf(os.Stderr, "  based on  : source root (zero-cost)\n")
 	} else if w.GitTreePath != "" {
-		fmt.Printf("  git tree  : %s\n", w.GitTreePath)
+		fmt.Fprintf(os.Stderr, "  git tree  : %s\n", w.GitTreePath)
 	}
-	fmt.Println()
-	fmt.Printf("Switch : orktree switch %s\n", w.Branch)
-	fmt.Printf("Remove : orktree rm     %s\n", w.Branch)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "Switch : orktree switch %s\n", w.Branch)
+	fmt.Fprintf(os.Stderr, "Remove : orktree rm     %s\n", w.Branch)
 	return nil
 }
 
@@ -453,8 +453,8 @@ func cmdSwitch(args []string) error {
 	}
 
 	_, _, merged := cfg.OverlayDirs(w)
-	fmt.Printf("Switched to orktree %q\n", w.Branch)
-	fmt.Printf("  path      : %s\n", merged)
+	fmt.Fprintf(os.Stderr, "Switched to orktree %q\n", w.Branch)
+	fmt.Fprintf(os.Stderr, "  path      : %s\n", merged)
 	return nil
 }
 
@@ -718,7 +718,7 @@ Commands:
   new    <branch> [--from <base>] [--no-git]     Create orktree on <branch>
   ls                                             List orktrees
   switch <branch> [--from <base>] [--no-git]     Mount orktree, creating it if needed
-  path   <branch>                                Print workspace path (mounts if needed)
+  path   <branch> [--from <base>] [--no-git]    Print workspace path (auto-creates if absent)
   rm     <branch> [--force]                      Remove orktree
   shell-init [--shell bash|zsh]                  Print shell integration (eval in .bashrc/.zshrc)
 
