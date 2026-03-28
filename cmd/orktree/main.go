@@ -32,7 +32,8 @@ func run(args []string) error {
 	case "check":
 		return cmdCheck(args[1:])
 	case "new", "n":
-		return cmdNew(args[1:])
+		fmt.Fprintf(os.Stderr, "orktree: 'new' is deprecated; use 'switch' instead\n")
+		return cmdSwitch(args[1:])
 	case "ls", "list":
 		return cmdLs(args[1:])
 	case "switch", "sw":
@@ -58,7 +59,11 @@ func run(args []string) error {
 // cmdCheck checks prerequisites and prints the exact one-time fix command for
 // anything that is missing.  Everything here only needs to be done once;
 // normal orktree commands need no sudo.
-func cmdCheck(_ []string) error {
+func cmdCheck(args []string) error {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("Usage: orktree check\n\nCheck prerequisites and print fix commands for anything missing.")
+		return nil
+	}
 	ok := true
 
 	check := func(label, fix string, pass bool) {
@@ -116,6 +121,10 @@ func canAccessFuseDev() bool {
 // ---------------------------------------------------------------------------
 
 func cmdInit(args []string) error {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("Usage: orktree init [--source <path>]\n\nInitialize orktree in a directory.")
+		return nil
+	}
 	source := "."
 
 	for i := 0; i < len(args); i++ {
@@ -148,12 +157,12 @@ func cmdInit(args []string) error {
 		fmt.Printf("  git repo : yes (orktrees will be git-backed)\n")
 	}
 	fmt.Println()
-	fmt.Println("Create an orktree with: orktree new <branch>")
+	fmt.Println("Create an orktree with: orktree switch <branch>")
 	return nil
 }
 
 // ---------------------------------------------------------------------------
-// new  (orktree new <branch> [--from <base>] [--no-git])
+// createOrktree
 //
 // Zero-cost paths (no git checkout):
 //   - No --from, or --from equals the source root's current branch:
@@ -166,34 +175,10 @@ func cmdInit(args []string) error {
 //     not match the source root's current branch.
 // ---------------------------------------------------------------------------
 
-func cmdNew(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: orktree new <branch> [--from <base>]")
-	}
-	branch := args[0]
-	from := ""
-	noGit := false
-
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "--from", "-f":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--from requires a value")
-			}
-			i++
-			from = args[i]
-		case "--no-git":
-			noGit = true
-		default:
-			return fmt.Errorf("unknown flag %q", args[i])
-		}
-	}
-
-	cfg, err := loadFromCwd()
-	if err != nil {
-		return err
-	}
-
+// createOrktree is the core creation logic, extracted from the old cmdNew.
+// Informational messages go to stderr so callers like cmdPath can capture
+// only the path from stdout.
+func createOrktree(cfg *state.Config, branch, from string, noGit bool) error {
 	w, err := state.NewOrktree(cfg, branch)
 	if err != nil {
 		return err
@@ -222,18 +207,16 @@ func cmdNew(args []string) error {
 		return fmt.Errorf("%w\n(hint: run 'orktree check' to check prerequisites)", err)
 	}
 
-	fmt.Printf("Created orktree %s (branch: %s)\n", w.ID, w.Branch)
-	fmt.Printf("  path      : %s\n", merged)
+	fmt.Fprintf(os.Stderr, "Created orktree %s (branch: %s)\n", w.ID, w.Branch)
+	fmt.Fprintf(os.Stderr, "  path      : %s\n", merged)
 	if w.LowerOrktreeBranch != "" {
-		fmt.Printf("  based on  : %s (zero-cost stacking)\n", w.LowerOrktreeBranch)
+		fmt.Fprintf(os.Stderr, "  based on  : %s (zero-cost stacking)\n", w.LowerOrktreeBranch)
 	} else if w.GitTreePath != "" && w.LowerDir == cfg.SourceRoot {
-		fmt.Printf("  based on  : source root (zero-cost)\n")
+		fmt.Fprintf(os.Stderr, "  based on  : source root (zero-cost)\n")
 	} else if w.GitTreePath != "" {
-		fmt.Printf("  git tree  : %s\n", w.GitTreePath)
+		fmt.Fprintf(os.Stderr, "  git tree  : %s\n", w.GitTreePath)
 	}
-	fmt.Println()
-	fmt.Printf("Switch : orktree switch %s\n", w.Branch)
-	fmt.Printf("Remove : orktree rm     %s\n", w.Branch)
+
 	return nil
 }
 
@@ -337,14 +320,36 @@ func seedGitFile(treeDir, upper string) error {
 // ls
 // ---------------------------------------------------------------------------
 
-func cmdLs(_ []string) error {
+func cmdLs(args []string) error {
+	quiet := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--quiet", "-q":
+			quiet = true
+		case "--help", "-h":
+			printLsHelp()
+			return nil
+		default:
+			return fmt.Errorf("unknown flag %q", args[i])
+		}
+	}
+
 	cfg, err := loadFromCwd()
 	if err != nil {
 		return err
 	}
 
 	if len(cfg.Orktrees) == 0 {
-		fmt.Println("No orktrees. Create one with: orktree new <branch>")
+		if !quiet {
+			fmt.Println("No orktrees. Create one with: orktree switch <branch>")
+		}
+		return nil
+	}
+
+	if quiet {
+		for _, w := range cfg.Orktrees {
+			fmt.Println(w.Branch)
+		}
 		return nil
 	}
 
@@ -371,18 +376,49 @@ func cmdLs(_ []string) error {
 }
 
 // ---------------------------------------------------------------------------
-// switch  (orktree switch <branch>)
+// switch  (orktree switch <branch> [--from <base>] [--no-git])
 //
-// Ensures the orktree is mounted.
+// Ensures the orktree is mounted, auto-creating it if absent.
+// Use "-" to return to the source root.
 // ---------------------------------------------------------------------------
 
 func cmdSwitch(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: orktree switch <branch>")
+		return fmt.Errorf("usage: orktree switch <branch> [--from <base>] [--no-git]")
 	}
+	if args[0] == "--help" || args[0] == "-h" {
+		printSwitchHelp()
+		return nil
+	}
+
 	branch := args[0]
+	from := ""
+	noGit := false
+
 	for i := 1; i < len(args); i++ {
-		return fmt.Errorf("unknown flag %q", args[i])
+		switch args[i] {
+		case "--from", "-f":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--from requires a value")
+			}
+			i++
+			from = args[i]
+		case "--no-git":
+			noGit = true
+		default:
+			return fmt.Errorf("unknown flag %q", args[i])
+		}
+	}
+
+	// "-" means return to source root
+	if branch == "-" {
+		cfg, err := loadFromCwd()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Switched to source root\n")
+		fmt.Printf("  path      : %s\n", cfg.SourceRoot)
+		return nil
 	}
 
 	cfg, err := loadFromCwd()
@@ -392,8 +428,8 @@ func cmdSwitch(args []string) error {
 
 	w, err := state.FindOrktree(cfg, branch)
 	if err != nil {
-		fmt.Printf("Orktree for branch %q not found; creating it...\n", branch)
-		return cmdNew([]string{branch})
+		fmt.Fprintf(os.Stderr, "orktree %q not found; creating...\n", branch)
+		return createOrktree(cfg, branch, from, noGit)
 	}
 
 	if err := ensureMountedWithAncestors(cfg, w, make(map[string]bool)); err != nil {
@@ -411,10 +447,24 @@ func cmdSwitch(args []string) error {
 // ---------------------------------------------------------------------------
 
 func cmdPath(args []string) error {
-	if len(args) != 1 {
+	if len(args) == 0 || len(args) > 1 {
 		return fmt.Errorf("usage: orktree path <branch>")
 	}
+	if args[0] == "--help" || args[0] == "-h" {
+		fmt.Println("Usage: orktree path <branch>\n\nPrint the workspace path for an orktree (auto-creates if absent).\nUse \"-\" to print the source root path.")
+		return nil
+	}
 	branch := args[0]
+
+	// "-" means source root
+	if branch == "-" {
+		cfg, err := loadFromCwd()
+		if err != nil {
+			return err
+		}
+		fmt.Println(cfg.SourceRoot)
+		return nil
+	}
 
 	cfg, err := loadFromCwd()
 	if err != nil {
@@ -423,7 +473,20 @@ func cmdPath(args []string) error {
 
 	w, err := state.FindOrktree(cfg, branch)
 	if err != nil {
-		return err
+		// Auto-create like switch does
+		fmt.Fprintf(os.Stderr, "orktree %q not found; creating...\n", branch)
+		if createErr := createOrktree(cfg, branch, "", false); createErr != nil {
+			return createErr
+		}
+		// Reload state to get the newly created orktree
+		cfg, err = state.Load(cfg.SourceRoot)
+		if err != nil {
+			return err
+		}
+		w, err = state.FindOrktree(cfg, branch)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := ensureMountedWithAncestors(cfg, w, make(map[string]bool)); err != nil {
@@ -443,7 +506,8 @@ const bashZshInit = `orktree() {
   case "$1" in
     switch|sw)
       local _orktree_path
-      _orktree_path="$(command orktree path "${@:2}")" && cd "$_orktree_path" || return $?
+      _orktree_path="$(command orktree path "${@:2}")" || return $?
+      cd "$_orktree_path" || return $?
       ;;
     *)
       command orktree "$@"
@@ -453,6 +517,10 @@ const bashZshInit = `orktree() {
 `
 
 func cmdShellInit(args []string) error {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("Usage: orktree shell-init [--shell bash|zsh]\n\nPrint shell integration snippet. Add to .bashrc/.zshrc:\n  eval \"$(orktree shell-init)\"")
+		return nil
+	}
 	shell := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -508,6 +576,10 @@ func ensureMountedWithAncestors(cfg *state.Config, w state.Orktree, visited map[
 func cmdRm(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: orktree rm <branch> [--force]")
+	}
+	if args[0] == "--help" || args[0] == "-h" {
+		fmt.Println("Usage: orktree rm <branch> [--force]\n\nRemove an orktree (unmount overlay, deregister git worktree, delete state).")
+		return nil
 	}
 	ref := args[0]
 	force := false
@@ -600,24 +672,45 @@ Usage:
   orktree <command> [args...]
 
 Commands:
-  check                                          Check prerequisites
-  init   [--source <path>]                       Initialize orktree in a directory
-  new    <branch> [--from <base>] [--no-git]     Create orktree on <branch>
-  ls                                             List orktrees
-  switch <branch>                                Mount orktree, creating it if needed
-  path   <branch>                                Print workspace path (mounts if needed)
-  rm     <branch> [--force]                      Remove orktree
-  shell-init [--shell bash|zsh]                  Print shell integration (eval in .bashrc/.zshrc)
+  check                                     Check prerequisites
+  init    [--source <path>]                 Initialize orktree in a directory
+  switch  <branch> [--from <b>] [--no-git]  Enter orktree (auto-creates if absent)
+  switch  -                                 Return to the source root
+  ls      [--quiet]                         List orktrees
+  path    <branch>                          Print workspace path
+  rm      <branch> [--force]                Remove orktree
 
-Aliases:
-  n      alias for new
-  sw     alias for switch
-  p      alias for path
-  remove alias for rm
-  list   alias for ls
+Shell integration (enables cd-on-switch and tab completion):
+  eval "$(orktree shell-init)"
 
-Shell integration:
-  eval "$(orktree shell-init)"    # add to ~/.bashrc or ~/.zshrc
-  # then: orktree switch <branch>  will cd to the workspace automatically
+Aliases: sw → switch, n → new (deprecated), p → path
+`)
+}
+
+func printSwitchHelp() {
+	fmt.Print(`Usage: orktree switch <branch> [--from <base>] [--no-git]
+
+Enter an orktree, auto-creating it if it doesn't exist.
+Use "-" to return to the source root.
+
+Flags:
+  --from, -f <base>   Base branch or git ref to branch from
+  --no-git             Skip git worktree setup
+
+Examples:
+  orktree switch fix-parser                 # create/enter from source root (zero-cost)
+  orktree switch fix-v2 --from fix-parser   # stack on existing orktree (zero-cost)
+  orktree switch hotfix --from v1.2.3       # branch from a specific commit
+  orktree switch -                          # return to source root
+`)
+}
+
+func printLsHelp() {
+	fmt.Print(`Usage: orktree ls [--quiet]
+
+List all orktrees with status and path.
+
+Flags:
+  --quiet, -q   Print one branch name per line, no header or decoration
 `)
 }
