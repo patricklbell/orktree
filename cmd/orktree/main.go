@@ -531,7 +531,7 @@ func cmdPath(args []string) error {
 // shell-init
 // ---------------------------------------------------------------------------
 
-const bashZshInit = `orktree() {
+const shellFunc = `orktree() {
   case "$1" in
     switch|sw)
       local _orktree_path
@@ -543,6 +543,137 @@ const bashZshInit = `orktree() {
       ;;
   esac
 }
+`
+
+const bashCompletion = `_orktree_completions() {
+  local cur prev commands
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  commands="check init switch ls path rm shell-init help"
+
+  if [[ $COMP_CWORD -eq 1 ]]; then
+    COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+    return
+  fi
+
+  local cmd="${COMP_WORDS[1]}"
+
+  case "$cmd" in
+    switch|sw)
+      case "$prev" in
+        --from|-f)
+          local branches
+          branches="$(command orktree ls --quiet 2>/dev/null)"
+          COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
+          ;;
+        *)
+          if [[ "$cur" == -* ]]; then
+            COMPREPLY=( $(compgen -W "--from --no-git --help" -- "$cur") )
+          else
+            local branches
+            branches="$(command orktree ls --quiet 2>/dev/null)"
+            COMPREPLY=( $(compgen -W "- $branches" -- "$cur") )
+          fi
+          ;;
+      esac
+      ;;
+    path|p)
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+      else
+        local branches
+        branches="$(command orktree ls --quiet 2>/dev/null)"
+        COMPREPLY=( $(compgen -W "- $branches" -- "$cur") )
+      fi
+      ;;
+    rm|remove)
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "--force --help" -- "$cur") )
+      else
+        local branches
+        branches="$(command orktree ls --quiet 2>/dev/null)"
+        COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
+      fi
+      ;;
+    ls|list)
+      COMPREPLY=( $(compgen -W "--quiet --help" -- "$cur") )
+      ;;
+    init)
+      COMPREPLY=( $(compgen -W "--source --help" -- "$cur") )
+      ;;
+    shell-init)
+      COMPREPLY=( $(compgen -W "--shell --help" -- "$cur") )
+      ;;
+  esac
+}
+complete -F _orktree_completions orktree
+`
+
+const zshCompletion = `_orktree() {
+  local -a commands branches
+  commands=(
+    'check:Check prerequisites'
+    'init:Initialize orktree in a directory'
+    'switch:Enter orktree (auto-creates if absent)'
+    'ls:List orktrees'
+    'path:Print workspace path'
+    'rm:Remove orktree'
+    'shell-init:Print shell integration'
+    'help:Show help'
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+    return
+  fi
+
+  case "${words[2]}" in
+    switch|sw)
+      case "${words[CURRENT-1]}" in
+        --from|-f)
+          branches=("${(@f)$(command orktree ls --quiet 2>/dev/null)}")
+          compadd -a branches
+          ;;
+        *)
+          if [[ "${words[CURRENT]}" == -* ]]; then
+            compadd -- --from --no-git --help
+          else
+            branches=("${(@f)$(command orktree ls --quiet 2>/dev/null)}")
+            compadd -- - "${branches[@]}"
+          fi
+          ;;
+      esac
+      ;;
+    path|p)
+      if [[ "${words[CURRENT]}" == -* ]]; then
+        compadd -- --help
+      else
+        branches=("${(@f)$(command orktree ls --quiet 2>/dev/null)}")
+        compadd -- - "${branches[@]}"
+      fi
+      ;;
+    rm|remove)
+      if [[ "${words[CURRENT]}" == -* ]]; then
+        compadd -- --force --help
+      else
+        branches=("${(@f)$(command orktree ls --quiet 2>/dev/null)}")
+        compadd -a branches
+      fi
+      ;;
+    ls|list)
+      compadd -- --quiet --help
+      ;;
+    init)
+      compadd -- --source --help
+      ;;
+    shell-init)
+      compadd -- --shell --help
+      ;;
+  esac
+}
+compdef _orktree orktree
 `
 
 func cmdShellInit(args []string) error {
@@ -563,9 +694,28 @@ func cmdShellInit(args []string) error {
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
+	if shell == "" {
+		shellEnv := os.Getenv("SHELL")
+		base := filepath.Base(shellEnv)
+		switch base {
+		case "bash":
+			shell = "bash"
+		case "zsh":
+			shell = "zsh"
+		case "fish":
+			shell = "fish"
+		default:
+			shell = "bash"
+		}
+	}
 	switch shell {
-	case "", "bash", "zsh":
-		fmt.Print(bashZshInit)
+	case "bash":
+		fmt.Print(shellFunc)
+		fmt.Print(bashCompletion)
+		return nil
+	case "zsh":
+		fmt.Print(shellFunc)
+		fmt.Print(zshCompletion)
 		return nil
 	case "fish":
 		return fmt.Errorf("fish shell support is not yet implemented")
