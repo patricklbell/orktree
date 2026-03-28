@@ -371,18 +371,49 @@ func cmdLs(_ []string) error {
 }
 
 // ---------------------------------------------------------------------------
-// switch  (orktree switch <branch>)
+// switch  (orktree switch <branch> [--from <base>] [--no-git])
 //
-// Ensures the orktree is mounted.
+// Ensures the orktree is mounted, auto-creating it if absent.
+// Use "-" to return to the source root.
 // ---------------------------------------------------------------------------
 
 func cmdSwitch(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: orktree switch <branch>")
+		return fmt.Errorf("usage: orktree switch <branch> [--from <base>] [--no-git]")
 	}
+
 	branch := args[0]
+	from := ""
+	noGit := false
+
 	for i := 1; i < len(args); i++ {
-		return fmt.Errorf("unknown flag %q", args[i])
+		switch args[i] {
+		case "--from", "-f":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--from requires a value")
+			}
+			i++
+			from = args[i]
+		case "--no-git":
+			noGit = true
+		default:
+			return fmt.Errorf("unknown flag %q", args[i])
+		}
+	}
+
+	// "-" means return to the source root
+	if branch == "-" {
+		if from != "" || noGit {
+			return fmt.Errorf("flags are not valid with '-'")
+		}
+		cfg, err := loadFromCwd()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Switched to source root\n")
+		fmt.Fprintf(os.Stderr, "  path      : %s\n", cfg.SourceRoot)
+		fmt.Println(cfg.SourceRoot)
+		return nil
 	}
 
 	cfg, err := loadFromCwd()
@@ -392,8 +423,29 @@ func cmdSwitch(args []string) error {
 
 	w, err := state.FindOrktree(cfg, branch)
 	if err != nil {
-		fmt.Printf("Orktree for branch %q not found; creating it...\n", branch)
-		return cmdNew([]string{branch})
+		fmt.Fprintf(os.Stderr, "orktree %q not found; creating...\n", branch)
+		// Build args for cmdNew: branch [--from <base>] [--no-git]
+		newArgs := []string{branch}
+		if from != "" {
+			newArgs = append(newArgs, "--from", from)
+		}
+		if noGit {
+			newArgs = append(newArgs, "--no-git")
+		}
+		if err := cmdNew(newArgs); err != nil {
+			return err
+		}
+		// Reload state after creation
+		cfg, err = state.Load(cfg.SourceRoot)
+		if err != nil {
+			return err
+		}
+		w, err = state.FindOrktree(cfg, branch)
+		if err != nil {
+			return err
+		}
+	} else if from != "" || noGit {
+		return fmt.Errorf("orktree %q already exists; --from and --no-git are only used during creation", branch)
 	}
 
 	if err := ensureMountedWithAncestors(cfg, w, make(map[string]bool)); err != nil {
@@ -595,7 +647,7 @@ func loadFromCwd() (*state.Config, error) {
 func cleanEmptyAncestors(path, stopAt string) {
 	for {
 		parent := filepath.Dir(path)
-		if parent == path || parent == stopAt || !strings.HasPrefix(path, stopAt) {
+		if parent == path || path == stopAt || !strings.HasPrefix(path, stopAt) {
 			return
 		}
 		if err := os.Remove(path); err != nil {
@@ -623,7 +675,7 @@ Commands:
   init   [--source <path>]                       Initialize orktree in a directory
   new    <branch> [--from <base>] [--no-git]     Create orktree on <branch>
   ls                                             List orktrees
-  switch <branch>                                Mount orktree, creating it if needed
+  switch <branch> [--from <base>] [--no-git]     Mount orktree, creating it if needed
   path   <branch>                                Print workspace path (mounts if needed)
   rm     <branch> [--force]                      Remove orktree
   shell-init [--shell bash|zsh]                  Print shell integration (eval in .bashrc/.zshrc)
