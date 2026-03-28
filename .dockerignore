@@ -1,0 +1,5 @@
+.git/
+.orktree/
+.devcontainer/
+orktree
+orktree-linux-*

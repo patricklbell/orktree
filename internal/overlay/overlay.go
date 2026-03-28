@@ -1,8 +1,8 @@
-// Package overlay manages overlayfs mounts for janus worktrees.
+// Package overlay manages overlayfs mounts for orktrees.
 //
 // Mounts are performed with fuse-overlayfs, a userspace implementation of
 // overlayfs that requires no elevated privileges — only /dev/fuse access,
-// which is granted by being in the fuse group (see janus setup).
+// which is granted by being in the fuse group (see orktree check).
 package overlay
 
 import (
@@ -26,7 +26,7 @@ func Create(upper, work, merged string) error {
 
 // Mount mounts a fuse-overlayfs with the given source as lowerdir.
 // Requires fuse-overlayfs to be installed and /dev/fuse to be accessible
-// (add yourself to the fuse group — see janus setup).
+// (add yourself to the fuse group — see orktree check).
 func Mount(source, upper, work, merged string) error {
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", source, upper, work)
 	cmd := exec.Command("fuse-overlayfs", "-o", opts, merged)

@@ -1,4 +1,4 @@
-// Package git provides helpers for git worktree operations used by janus.
+// Package git provides helpers for git worktree operations used by orktree.
 package git
 
 import (
@@ -90,6 +90,39 @@ func PruneWorktrees(repoRoot string) error {
 	cmd.Stderr = &errBuf
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git worktree prune: %w\n%s", err, strings.TrimSpace(errBuf.String()))
+	}
+	return nil
+}
+
+// CreateBranch creates a new local branch in repoRoot.
+// If from is non-empty the branch is created from that ref; otherwise HEAD is used.
+func CreateBranch(repoRoot, branch, from string) error {
+	args := []string{"-C", repoRoot, "branch", branch}
+	if from != "" {
+		args = append(args, from)
+	}
+	cmd := exec.Command("git", args...)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git branch: %w\n%s", err, strings.TrimSpace(errBuf.String()))
+	}
+	return nil
+}
+
+// AddWorktreeNoCheckout registers a git worktree at worktreePath for an
+// already-existing branch without checking out any files.  Only a .git gitfile
+// is written to worktreePath.  This is the zero-cost path: the actual file tree
+// is supplied via a fuse-overlayfs lowerdir rather than a fresh checkout.
+func AddWorktreeNoCheckout(repoRoot, worktreePath, branch string) error {
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		return fmt.Errorf("creating worktree path %s: %w", worktreePath, err)
+	}
+	cmd := exec.Command("git", "-C", repoRoot, "worktree", "add", "--no-checkout", worktreePath, branch)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git worktree add --no-checkout: %w\n%s", err, strings.TrimSpace(errBuf.String()))
 	}
 	return nil
 }

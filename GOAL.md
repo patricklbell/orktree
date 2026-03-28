@@ -1,0 +1,6 @@
+# Goal
+
+`orktree` makes switching between parallel streams of work instant and lossless.
+Each branch gets its own isolated workspace — you can context-switch at any time
+without committing, stashing, or losing in-progress changes. Creating new orktrees
+is instant and **zero-cost by default**.

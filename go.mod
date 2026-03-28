@@ -1,3 +1,3 @@
-module github.com/patricklbell/janus
+module github.com/patricklbell/orktree
 
-go 1.24.13
+go 1.23

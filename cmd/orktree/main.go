@@ -589,7 +589,7 @@ Usage:
   orktree <command> [args...]
 
 Commands:
-  check                                          Check prerequisites (run once)
+  check                                          Check prerequisites
   init   [--source <path>]                       Initialize orktree in a directory
   new    <branch> [--from <base>] [--no-git]     Create orktree on <branch>
   ls                                             List orktrees
