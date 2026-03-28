@@ -38,7 +38,7 @@ no files are duplicated.
 **ls** [**--quiet**]
 : List all orktrees with status and path.
 
-**path** *branch*
+**path** *branch* [**--from** *base*] [**--no-git**]
 : Print workspace path (auto-creates if absent).
 
 **rm** *branch* [**--force**]

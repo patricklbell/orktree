@@ -12,7 +12,7 @@ orktree-path - print orktree workspace path
 
 # SYNOPSIS
 
-**orktree path** *branch*
+**orktree path** *branch* [**--from** *base*] [**--no-git**]
 
 # DESCRIPTION
 
@@ -31,6 +31,12 @@ This command is used internally by shell integration.
 
 **-**
 : Print the source root path.
+
+**--from**, **-f** *base*
+: Branch or git ref to base the new orktree on. Only used when auto-creating.
+
+**--no-git**
+: Skip git worktree setup when auto-creating.
 
 **--help**, **-h**
 : Print usage information.
