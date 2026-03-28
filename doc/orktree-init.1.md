@@ -19,7 +19,7 @@ orktree-init - initialize orktree in a directory
 Initialize orktree metadata in the given directory (or the current directory).
 Creates a **\<repo\>.orktree/** directory next to the source root containing
 **state.json** and a **.gitignore** that prevents the directory from being
-tracks by any enclosing git repository.
+tracked by any enclosing git repository.
 
 If the directory is a git repository, orktrees will be git-backed
 (each orktree gets its own branch and worktree registration).

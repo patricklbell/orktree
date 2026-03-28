@@ -463,10 +463,28 @@ func cmdSwitch(args []string) error {
 // ---------------------------------------------------------------------------
 
 func cmdPath(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: orktree path <branch>")
+	if len(args) == 0 {
+		return fmt.Errorf("usage: orktree path <branch> [--from <base>] [--no-git]")
 	}
+
 	branch := args[0]
+	from := ""
+	noGit := false
+
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--from", "-f":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--from requires a value")
+			}
+			i++
+			from = args[i]
+		case "--no-git":
+			noGit = true
+		default:
+			return fmt.Errorf("unknown flag %q", args[i])
+		}
+	}
 
 	cfg, err := loadFromCwd()
 	if err != nil {
@@ -481,7 +499,25 @@ func cmdPath(args []string) error {
 
 	w, err := state.FindOrktree(cfg, branch)
 	if err != nil {
-		return err
+		fmt.Fprintf(os.Stderr, "orktree %q not found; creating...\n", branch)
+		newArgs := []string{branch}
+		if from != "" {
+			newArgs = append(newArgs, "--from", from)
+		}
+		if noGit {
+			newArgs = append(newArgs, "--no-git")
+		}
+		if err := cmdNew(newArgs); err != nil {
+			return err
+		}
+		cfg, err = state.Load(cfg.SourceRoot)
+		if err != nil {
+			return err
+		}
+		w, err = state.FindOrktree(cfg, branch)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := ensureMountedWithAncestors(cfg, w, make(map[string]bool)); err != nil {
