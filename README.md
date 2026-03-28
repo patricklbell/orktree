@@ -115,3 +115,6 @@ Run the tests:
 ```sh
 go test ./...
 ```
+
+## Actions
+Be a good citizen. If code or documentation does not meet or exceed these standards, fix it!

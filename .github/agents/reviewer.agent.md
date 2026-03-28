@@ -22,6 +22,8 @@ Checklist:
 Output:
 ```
 VERDICT: APPROVED | CHANGES_REQUESTED
-Issues: - <file>:<line> — <description>
+ISSUES: - <file>:<line> — <description>
 FEEDBACK:<what stopped you from doing your job effectively?>
 ```
+
+Remember to include the exact file and line for each issue.
