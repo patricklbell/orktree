@@ -1,6 +1,6 @@
-# AGENTS.md — orktree agent guide
+# AGENTS.md
 
-This file describes how AI agents should work within this repository.
+This file describes information for AI agents working in this repository.
 
 ---
 
@@ -23,44 +23,6 @@ State is stored in `.orktree/state.json` at the repository root.
 
 ---
 
-## Prerequisites
-
-Run `orktree check` to verify all prerequisites:
-
-| Dependency       | Purpose                            | Install                                    |
-|------------------|------------------------------------|--------------------------------------------|
-| `fuse-overlayfs` | rootless copy-on-write filesystem  | `sudo apt-get install fuse-overlayfs`      |
-| `git`            | worktree branch management         | `sudo apt-get install git`                 |
-| `fuse` group     | access `/dev/fuse` (one-time)      | `sudo usermod -aG fuse $USER` then log out |
-
----
-
-## Typical agent workflow
-
-```sh
-# 1. One-time: initialise orktree in the repo root
-orktree init
-
-# 2. Create an orktree for your task (zero-cost — no file duplication)
-orktree new <branch>            # e.g. orktree new fix-parser
-
-# 3. Work inside the merged directory reported by `orktree new`
-#    (all writes land in upper/ — the base checkout is unchanged)
-
-# 4. Verify your work, run tests, etc.
-cd $(orktree ls | awk '/fix-parser/ {print $NF}')
-go test ./...
-
-# 5. Commit from the git worktree registration dir
-git -C ~/.local/share/orktree/<repo-id>/<orktree-id>/tree add -A && \
-  git -C ~/.local/share/orktree/<repo-id>/<orktree-id>/tree commit -m "..."
-
-# 6. Remove when done
-orktree rm <branch>
-```
-
----
-
 ## Commands
 
 | Command                        | Description                                              |
@@ -73,8 +35,6 @@ orktree rm <branch>
 | `orktree rm <branch> [--force]` | Unmount overlay, deregister git worktree, delete state  |
 
 `<branch>` accepts: exact branch name, full orktree ID, or a unique prefix.
-
-Aliases: `new` → `n`, `switch` → `sw`, `rm` → `remove`, `ls` → `list`.
 
 ### Zero-cost orktrees
 
@@ -116,8 +76,7 @@ go test ./...           # run all tests
 go vet ./...            # static analysis
 ```
 
-The module path is `github.com/patricklbell/orktree` (Go 1.23+). No external
-dependencies beyond the standard library.
+The module path is `github.com/patricklbell/orktree` (Go 1.23+).
 
 ---
 
@@ -130,3 +89,18 @@ dependencies beyond the standard library.
 - Path helpers (`GitTreeDir`, `OverlayDirs`, `MountPath`) live on
   `*state.Config` so call sites stay free of path-construction logic.
 - Add tests in `internal/state/state_test.go` for any new state behaviour.
+
+---
+
+## Writing style
+
+**Code comments** explain the *why*, not the *what* (the code already shows the *what*). Do not add comments if the why and what are already clear for a senior software engineer. Types that consistently pay off:
+
+- **TODOs**: include actionable context — `// TODO: O(n²) fine for n<100, needs indexing at scale`, not `// TODO: optimize`.
+- **References**: link to the paper, spec, or source with a permalink; note any divergence.
+- **Load-bearing choices**: if a detail is critical for correctness (e.g. "must be sorted — iteration order matters below"), call it out.
+- **"Why not"s**: when you avoid the obvious approach, say why; otherwise someone will "fix" it.
+- **Hard-learned lessons**: if a non-obvious fix took 30+ minutes to find, document it.
+- **Constant rationale**: explain magic numbers — whether derived, measured, or chosen arbitrarily.
+
+**Commit messages** should capture *why* the codebase changed, not just *what* changed.  For non-trivial commits follow **Problem → Solution → Implications**: what forced the change, the key design decisions, and noteworthy trade-offs or surprises.  Each commit should be one coherent change; use `git add -p` to keep refactoring, features, and fixes separate.

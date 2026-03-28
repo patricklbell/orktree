@@ -12,9 +12,8 @@ user-invocable: false
 
 Inputs: `TASK` (observed misbehaviour), `BRANCH`. Produces findings only — no code.
 
-1. Read [ARCHITECTURE.md](../../ARCHITECTURE.md) for expected behaviour.
-2. Reproduce the failure; trace backwards to the earliest incorrect state.
-3. Identify the exact file, function, and condition responsible.
+1. Reproduce the failure; trace backwards to the earliest incorrect state.
+2. Identify the exact file, function, and condition responsible.
 
 Output:
 ```

@@ -96,8 +96,6 @@ path performs a conventional `git worktree add` checkout.
 
 Branch name, full orktree ID, or a unique prefix are all accepted as `<branch>`.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
-
 ## Developer instructions
 
 Requires [Go](https://go.dev/dl/) 1.23 or later.

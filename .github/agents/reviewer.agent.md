@@ -16,7 +16,8 @@ Checklist:
 - `go build ./... && go test ./... && go vet ./...` pass
 - Change matches stated task; no scope creep
 - Errors lowercase + `%w`; state writes atomic via `os.Rename`; no path construction outside `*state.Config`; new state behaviour tested
-- Consistent with [ARCHITECTURE.md](../../ARCHITECTURE.md); no unnecessary new external dependencies
+- Consistent with [GOAL.md](../../GOAL.md); no unnecessary new external dependencies
+- When no test exists for the changed package, recommend a minimum smoke-test shape (even pseudocode) so the coder can add it in a follow-up.
 
 Output:
 ```
