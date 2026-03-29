@@ -3,6 +3,7 @@ agents:
   - coder
   - debugger
   - designer
+  - documentor
   - reviewer
   - ux-reviewer
 description: Orchestrator — decomposes a high-level goal into tasks, assembles teams of specialized agents, and integrates their results. Never does implementation, design, analysis, or UX work itself.
