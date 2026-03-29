@@ -38,13 +38,15 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           for GOARCH in amd64 arm64; do
             export ARCH="$GOARCH" VERSION
-            nfpm package --packager deb --target "dist/orktree_${VERSION}_${GOARCH}.deb"
-            # Map Go arch to RPM arch for filename convention
+            # nfpm expands ${VAR} in top-level scalar fields but not in
+            # contents[].src paths, so pre-expand the whole config with envsubst.
+            envsubst < nfpm.yaml > /tmp/nfpm-expanded.yaml
             case "$GOARCH" in
               amd64) RPM_ARCH="x86_64" ;;
               arm64) RPM_ARCH="aarch64" ;;
             esac
-            nfpm package --packager rpm --target "dist/orktree-${VERSION}-1.${RPM_ARCH}.rpm"
+            nfpm package --packager deb --config /tmp/nfpm-expanded.yaml --target "dist/orktree_${VERSION}_${GOARCH}.deb"
+            nfpm package --packager rpm --config /tmp/nfpm-expanded.yaml --target "dist/orktree-${VERSION}-1.${RPM_ARCH}.rpm"
           done
 
       - name: Create release
