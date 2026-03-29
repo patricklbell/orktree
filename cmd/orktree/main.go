@@ -229,7 +229,6 @@ func cmdSwitch(args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "Switched to source root\n")
 		fmt.Fprintf(os.Stderr, "  path      : %s\n", mgr.SourceRoot())
-		fmt.Println(mgr.SourceRoot())
 		return nil
 	}
 

@@ -50,16 +50,14 @@ _orktree() {
         switch|sw)
           _arguments \
             '1:branch:_orktree_branches' \
-            '--from[branch from a specific ref]:ref:_orktree_branches' \
-            '(-f)--from[branch from a specific ref]:ref:_orktree_branches' \
+            '(-f --from)'{-f,--from}'[branch from a specific ref]:ref:_orktree_branches' \
             '--no-git[skip git branch creation]' \
             '--help[show help]'
           ;;
         path|p)
           _arguments \
             '1:branch:_orktree_branches' \
-            '--from[branch from a specific ref]:ref:_orktree_branches' \
-            '(-f)--from[branch from a specific ref]:ref:_orktree_branches' \
+            '(-f --from)'{-f,--from}'[branch from a specific ref]:ref:_orktree_branches' \
             '--no-git[skip git branch creation]' \
             '--help[show help]'
           ;;

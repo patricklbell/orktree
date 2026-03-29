@@ -222,10 +222,33 @@ func (m *Manager) IsGitRepo() bool {
 // Operations
 // ---------------------------------------------------------------------------
 
+// validateBranch rejects branch names that would escape the orktree directory
+// or are otherwise invalid for use as filesystem paths.
+func validateBranch(branch string) error {
+	if branch == "" {
+		return fmt.Errorf("branch name must not be empty")
+	}
+	if strings.ContainsRune(branch, 0) {
+		return fmt.Errorf("branch name contains invalid characters")
+	}
+	cleaned := filepath.Clean(branch)
+	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
+		return fmt.Errorf("branch name %q would escape the orktree directory", branch)
+	}
+	return nil
+}
+
 // Create creates a new orktree for branch: adds a state entry, sets up git
 // (unless NoGit), and mounts the overlay. Returns info for the newly created
 // orktree.
 func (m *Manager) Create(branch string, opts CreateOpts) (OrktreeInfo, error) {
+	if err := validateBranch(branch); err != nil {
+		return OrktreeInfo{}, err
+	}
+	if _, err := state.FindOrktree(m.cfg, branch); err == nil {
+		return OrktreeInfo{}, fmt.Errorf("orktree %q already exists", branch)
+	}
+
 	w, err := state.NewOrktree(m.cfg, branch)
 	if err != nil {
 		return OrktreeInfo{}, err
@@ -248,9 +271,11 @@ func (m *Manager) Create(branch string, opts CreateOpts) (OrktreeInfo, error) {
 	}
 
 	if err := overlay.Create(upper, work, merged); err != nil {
+		state.RemoveOrktree(m.cfg, w.ID) //nolint:errcheck
 		return OrktreeInfo{}, err
 	}
 	if err := overlay.Mount(lowerDir, upper, work, merged); err != nil {
+		state.RemoveOrktree(m.cfg, w.ID) //nolint:errcheck
 		return OrktreeInfo{}, err
 	}
 
