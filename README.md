@@ -29,7 +29,7 @@ sudo apt install ./orktree_VERSION_amd64.deb
 
 ```sh
 # amd64
-sudo dnf install https://github.com/patricklbell/orktree/releases/latest/download/orktree-VERSION-1.amd64.rpm
+sudo dnf install https://github.com/patricklbell/orktree/releases/latest/download/orktree-VERSION-1.x86_64.rpm
 ```
 
 Replace `VERSION` with the release version (e.g. `0.3.0`) and `amd64` with

@@ -116,3 +116,23 @@ func TestRemoveCheck_HasBlockers(t *testing.T) {
 	}
 }
 
+func TestIsOverlayWhiteout(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{".wh..wh..opq", true},
+		{".wh..opq", true},
+		{".wh.deleted-file.txt", true},
+		{"subdir/.wh.foo", true},
+		{"normal-file.txt", false},
+		{".whatsapp/config", false},
+		{"src/main.go", false},
+	}
+	for _, tt := range tests {
+		if got := orktree.IsOverlayWhiteout(tt.path); got != tt.want {
+			t.Errorf("IsOverlayWhiteout(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+

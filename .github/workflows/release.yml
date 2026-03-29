@@ -39,7 +39,12 @@ jobs:
           for GOARCH in amd64 arm64; do
             export ARCH="$GOARCH" VERSION
             nfpm package --packager deb --target "dist/orktree_${VERSION}_${GOARCH}.deb"
-            nfpm package --packager rpm --target "dist/orktree-${VERSION}-1.${GOARCH}.rpm"
+            # Map Go arch to RPM arch for filename convention
+            case "$GOARCH" in
+              amd64) RPM_ARCH="x86_64" ;;
+              arm64) RPM_ARCH="aarch64" ;;
+            esac
+            nfpm package --packager rpm --target "dist/orktree-${VERSION}-1.${RPM_ARCH}.rpm"
           done
 
       - name: Create release

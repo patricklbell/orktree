@@ -15,6 +15,12 @@ import (
 	"github.com/patricklbell/orktree/internal/state"
 )
 
+// IsOverlayWhiteout reports whether the path represents an overlayfs
+// whiteout marker (internal metadata for file deletion or directory opacity).
+func IsOverlayWhiteout(relPath string) bool {
+	return strings.HasPrefix(filepath.Base(relPath), ".wh.")
+}
+
 // Manager wraps all orchestration logic for a single orktree-managed
 // repository. Obtain one via Init, NewManager, or Discover.
 type Manager struct {
@@ -336,8 +342,7 @@ func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
 
 		lowerDir := m.cfg.MountPath(w)
 		for _, f := range dirtyFiles {
-			// Skip overlayfs whiteout markers — internal metadata, not user files.
-			if strings.HasPrefix(filepath.Base(f), ".wh.") {
+			if IsOverlayWhiteout(f) {
 				continue
 			}
 			if ignoredSet[f] {
@@ -369,7 +374,7 @@ func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
 		// NoGit mode: treat all dirty files as untracked, skipping whiteouts.
 		var filtered []string
 		for _, f := range dirtyFiles {
-			if !strings.HasPrefix(filepath.Base(f), ".wh.") {
+			if !IsOverlayWhiteout(f) {
 				filtered = append(filtered, f)
 			}
 		}
