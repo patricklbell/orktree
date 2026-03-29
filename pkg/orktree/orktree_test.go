@@ -76,6 +76,47 @@ func TestList_emptyReturnsEmptySlice(t *testing.T) {
 	}
 }
 
+func TestRemoveCheck_IsClean(t *testing.T) {
+	tests := []struct {
+		name string
+		rc   orktree.RemoveCheck
+		want bool
+	}{
+		{"empty check is clean", orktree.RemoveCheck{}, true},
+		{"has dependents", orktree.RemoveCheck{Dependents: []string{"a"}}, false},
+		{"has tracked dirty", orktree.RemoveCheck{TrackedTotal: 1}, false},
+		{"has untracked dirty", orktree.RemoveCheck{UntrackedTotal: 2}, false},
+		{"has unmerged commits", orktree.RemoveCheck{UnmergedTotal: 1}, false},
+		{"only ignored dirty is clean", orktree.RemoveCheck{IgnoredDirty: 5}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.rc.IsClean(); got != tt.want {
+				t.Errorf("IsClean() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRemoveCheck_HasBlockers(t *testing.T) {
+	tests := []struct {
+		name string
+		rc   orktree.RemoveCheck
+		want bool
+	}{
+		{"no dependents", orktree.RemoveCheck{}, false},
+		{"has dependents", orktree.RemoveCheck{Dependents: []string{"child"}}, true},
+		{"dirty but no dependents", orktree.RemoveCheck{TrackedTotal: 5}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.rc.HasBlockers(); got != tt.want {
+				t.Errorf("HasBlockers() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRemoveRefusedError_formatting(t *testing.T) {
 	t.Run("all sections populated", func(t *testing.T) {
 		e := &orktree.RemoveRefusedError{

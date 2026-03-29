@@ -390,7 +390,8 @@ func cmdRm(args []string) error {
 		return err
 	}
 
-	if err := mgr.Remove(ref, force); err != nil {
+	_ = force // TODO: next task adds interactive prompt via CheckRemove
+	if err := mgr.Remove(ref); err != nil {
 		return err
 	}
 

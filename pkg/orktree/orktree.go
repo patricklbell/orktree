@@ -79,6 +79,32 @@ func (e *RemoveRefusedError) Error() string {
 	return b.String()
 }
 
+// RemoveCheck is a read-only assessment of what would be lost by removing an orktree.
+type RemoveCheck struct {
+	Branch          string
+	MergedPath      string
+	Dependents      []string // branch names of stacked orktrees
+	UnmergedCommits []string // short commit descriptions (at most 10)
+	UnmergedTotal   int      // true count of unmerged commits
+	TrackedDirty    []string // modified/deleted tracked files (at most 10)
+	UntrackedDirty  []string // new files not in .gitignore (at most 10)
+	IgnoredDirty    int      // count of gitignored files (cache/build artifacts)
+	TrackedTotal    int      // true count of tracked dirty files
+	UntrackedTotal  int      // true count of untracked non-ignored files
+}
+
+// IsClean reports whether the orktree has no uncommitted work worth preserving.
+// Ignored files (cache/build artifacts) are not considered.
+func (c *RemoveCheck) IsClean() bool {
+	return len(c.Dependents) == 0 && c.TrackedTotal == 0 && c.UntrackedTotal == 0 && c.UnmergedTotal == 0
+}
+
+// HasBlockers reports whether removal should be refused regardless of user confirmation.
+// Currently this is true only when other orktrees depend on this one as a base layer.
+func (c *RemoveCheck) HasBlockers() bool {
+	return len(c.Dependents) > 0
+}
+
 // OrktreeInfo is a read-only snapshot of an orktree's metadata and status.
 type OrktreeInfo struct {
 	ID                 string
@@ -327,47 +353,97 @@ func (m *Manager) UpperDirFiles(ref string, limit int) ([]string, int, error) {
 	return overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), limit)
 }
 
+// CheckRemove performs a read-only assessment of what would be lost by
+// removing the orktree identified by ref. The caller can inspect the
+// returned RemoveCheck to decide whether to proceed.
+func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
+	w, err := state.FindOrktree(m.cfg, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	upper, _, merged := m.cfg.OverlayDirs(w)
+	rc := &RemoveCheck{
+		Branch:     w.Branch,
+		MergedPath: merged,
+	}
+
+	// Dependents.
+	for _, d := range state.Dependents(m.cfg, w.Branch) {
+		rc.Dependents = append(rc.Dependents, d.Branch)
+	}
+
+	// Dirty files in the overlay upper dir.
+	dirtyFiles, _, _ := overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), 0)
+
+	if w.GitTreePath != "" {
+		// Classify dirty files using git ignore rules.
+		ignoredSet := make(map[string]bool)
+		if len(dirtyFiles) > 0 {
+			ignored, _ := igit.CheckIgnored(m.cfg.SourceRoot, dirtyFiles)
+			for _, p := range ignored {
+				ignoredSet[p] = true
+			}
+		}
+
+		lowerDir := m.cfg.MountPath(w)
+		for _, f := range dirtyFiles {
+			if ignoredSet[f] {
+				rc.IgnoredDirty++
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(lowerDir, f)); err == nil {
+				rc.TrackedTotal++
+				if len(rc.TrackedDirty) < 10 {
+					rc.TrackedDirty = append(rc.TrackedDirty, f)
+				}
+			} else {
+				rc.UntrackedTotal++
+				if len(rc.UntrackedDirty) < 10 {
+					rc.UntrackedDirty = append(rc.UntrackedDirty, f)
+				}
+			}
+		}
+
+		// Unmerged commits — request 11 to detect overflow.
+		commits, _ := igit.UnmergedCommits(m.cfg.SourceRoot, w.Branch, 11)
+		rc.UnmergedTotal = len(commits)
+		if len(commits) > 10 {
+			commits = commits[:10]
+		}
+		rc.UnmergedCommits = commits
+	} else {
+		// NoGit mode: treat all dirty files as untracked.
+		rc.UntrackedTotal = len(dirtyFiles)
+		if len(dirtyFiles) > 10 {
+			rc.UntrackedDirty = dirtyFiles[:10]
+		} else {
+			rc.UntrackedDirty = dirtyFiles
+		}
+	}
+
+	return rc, nil
+}
+
 // Remove unmounts the overlay, deregisters the git worktree, and deletes
-// the orktree state entry. When force is true, safety checks and errors
-// from unmount and worktree removal are ignored.
-func (m *Manager) Remove(ref string, force bool) error {
+// the orktree state entry unconditionally.
+func (m *Manager) Remove(ref string) error {
 	w, err := state.FindOrktree(m.cfg, ref)
 	if err != nil {
 		return err
 	}
 
-	// Safety checks — skipped when --force is set.
-	if !force && w.GitTreePath != "" {
-		refused := &RemoveRefusedError{Branch: w.Branch}
-
-		deps := state.Dependents(m.cfg, w.Branch)
-		for _, d := range deps {
-			refused.Dependents = append(refused.Dependents, d.Branch)
-		}
-
-		upper, _, _ := m.cfg.OverlayDirs(w)
-		dirtyFiles, _, _ := overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), 0)
-		refused.DirtyFiles = dirtyFiles
-
-		commits, _ := igit.UnmergedCommits(m.cfg.SourceRoot, w.Branch, 10)
-		refused.UnmergedCommits = commits
-
-		if len(refused.Dependents) > 0 || len(refused.DirtyFiles) > 0 || len(refused.UnmergedCommits) > 0 {
-			return refused
-		}
-	}
-
 	upper, work, merged := m.cfg.OverlayDirs(w)
 
-	if err := overlay.Remove(upper, work, merged); err != nil && !force {
-		return fmt.Errorf("removing overlay: %w (use --force to ignore)", err)
+	if err := overlay.Remove(upper, work, merged); err != nil {
+		return fmt.Errorf("removing overlay: %w", err)
 	}
 
 	cleanEmptyAncestors(merged, state.SiblingDir(m.cfg.SourceRoot))
 
 	if w.GitTreePath != "" {
-		if err := igit.RemoveWorktree(m.cfg.SourceRoot, w.GitTreePath); err != nil && !force {
-			return fmt.Errorf("removing git worktree: %w (use --force to ignore)", err)
+		if err := igit.RemoveWorktree(m.cfg.SourceRoot, w.GitTreePath); err != nil {
+			return fmt.Errorf("removing git worktree: %w", err)
 		}
 		igit.PruneWorktrees(m.cfg.SourceRoot) //nolint:errcheck
 	}
