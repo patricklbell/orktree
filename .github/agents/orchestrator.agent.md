@@ -30,6 +30,8 @@ No-code agents (debugger, designer, ux-reviewer) run **before** the coder on the
 
 If you provide code to agents, clearly discriminate between psuedocode and real code. 
 
+Do not provide too many tasks to one subagent at once. Work on large tasks one at a time.
+
 ## Steps
 
 1. Read [AGENTS.md](../../AGENTS.md) and [GOAL.md](../../GOAL.md).
