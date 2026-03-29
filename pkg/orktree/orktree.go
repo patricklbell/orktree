@@ -315,11 +315,12 @@ func (m *Manager) List() ([]OrktreeInfo, error) {
 
 // UpperDirFiles returns paths of files in the overlay upper directory that
 // genuinely differ from the lower layer. Files copied up by the overlay but
-// reverted to identical content are excluded. Returns at most limit paths.
-func (m *Manager) UpperDirFiles(ref string, limit int) ([]string, error) {
+// reverted to identical content are excluded. Returns at most limit paths and
+// the total count of dirty files (which may exceed len(files) when truncated).
+func (m *Manager) UpperDirFiles(ref string, limit int) ([]string, int, error) {
 	w, err := state.FindOrktree(m.cfg, ref)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	upper, _, _ := m.cfg.OverlayDirs(w)
 
@@ -345,7 +346,7 @@ func (m *Manager) Remove(ref string, force bool) error {
 		}
 
 		upper, _, _ := m.cfg.OverlayDirs(w)
-		dirtyFiles, _ := overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), 11)
+		dirtyFiles, _, _ := overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), 0)
 		refused.DirtyFiles = dirtyFiles
 
 		commits, _ := igit.UnmergedCommits(m.cfg.SourceRoot, w.Branch, 10)
