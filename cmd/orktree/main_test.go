@@ -80,7 +80,7 @@ func TestFormatAssessment_allSections(t *testing.T) {
 		"src/parser.go",
 		"Untracked files:",
 		"notes.txt",
-		"Ignored files (cache/build artifacts): 847 files",
+		"Ignored files: 847 files",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in output:\n%s", want, got)
@@ -112,7 +112,7 @@ func TestFormatAssessment_onlyIgnored(t *testing.T) {
 		IgnoredDirty: 42,
 	}
 	got := formatAssessment(rc)
-	if !strings.Contains(got, "Ignored files (cache/build artifacts): 42 files") {
+	if !strings.Contains(got, "Ignored files: 42 files") {
 		t.Errorf("expected ignored section, got:\n%s", got)
 	}
 	if strings.Contains(got, "Commits") || strings.Contains(got, "Modified") || strings.Contains(got, "Untracked") {

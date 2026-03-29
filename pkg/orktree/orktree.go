@@ -336,6 +336,10 @@ func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
 
 		lowerDir := m.cfg.MountPath(w)
 		for _, f := range dirtyFiles {
+			// Skip overlayfs whiteout markers — internal metadata, not user files.
+			if strings.HasPrefix(filepath.Base(f), ".wh.") {
+				continue
+			}
 			if ignoredSet[f] {
 				rc.IgnoredDirty++
 				continue
@@ -362,12 +366,18 @@ func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
 			rc.UnmergedTotal = len(commits)
 		}
 	} else {
-		// NoGit mode: treat all dirty files as untracked.
-		rc.UntrackedTotal = len(dirtyFiles)
-		if len(dirtyFiles) > 10 {
-			rc.UntrackedDirty = dirtyFiles[:10]
+		// NoGit mode: treat all dirty files as untracked, skipping whiteouts.
+		var filtered []string
+		for _, f := range dirtyFiles {
+			if !strings.HasPrefix(filepath.Base(f), ".wh.") {
+				filtered = append(filtered, f)
+			}
+		}
+		rc.UntrackedTotal = len(filtered)
+		if len(filtered) > 10 {
+			rc.UntrackedDirty = filtered[:10]
 		} else {
-			rc.UntrackedDirty = dirtyFiles
+			rc.UntrackedDirty = filtered
 		}
 	}
 

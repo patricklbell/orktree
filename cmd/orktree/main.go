@@ -424,7 +424,7 @@ func formatAssessment(rc *orktree.RemoveCheck) string {
 	}
 
 	if rc.IgnoredDirty > 0 {
-		sections = append(sections, fmt.Sprintf("Ignored files (cache/build artifacts): %d files", rc.IgnoredDirty))
+		sections = append(sections, fmt.Sprintf("Ignored files: %d files", rc.IgnoredDirty))
 	}
 
 	return strings.Join(sections, "\n\n")
