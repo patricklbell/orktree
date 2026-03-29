@@ -21,6 +21,64 @@ type Manager struct {
 	cfg *state.Config
 }
 
+// RemoveRefusedError is returned by Remove when safety checks fail.
+type RemoveRefusedError struct {
+	Branch          string
+	Dependents      []string // branch names of dependent orktrees
+	UnmergedCommits []string // short commit descriptions
+	DirtyFiles      []string // relative paths in upper dir
+}
+
+func (e *RemoveRefusedError) Error() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "refusing to remove %q — has unmerged work", e.Branch)
+
+	if len(e.Dependents) > 0 {
+		b.WriteString("\n\nDependent orktrees (stacked on this one):")
+		cap := len(e.Dependents)
+		if cap > 10 {
+			cap = 10
+		}
+		for _, d := range e.Dependents[:cap] {
+			fmt.Fprintf(&b, "\n  %s", d)
+		}
+		if len(e.Dependents) > 10 {
+			fmt.Fprintf(&b, "\n  ... and %d more", len(e.Dependents)-10)
+		}
+	}
+
+	if len(e.DirtyFiles) > 0 {
+		b.WriteString("\n\nUncommitted changes in overlay:")
+		cap := len(e.DirtyFiles)
+		if cap > 10 {
+			cap = 10
+		}
+		for _, f := range e.DirtyFiles[:cap] {
+			fmt.Fprintf(&b, "\n  %s", f)
+		}
+		if len(e.DirtyFiles) > 10 {
+			fmt.Fprintf(&b, "\n  ... and %d more", len(e.DirtyFiles)-10)
+		}
+	}
+
+	if len(e.UnmergedCommits) > 0 {
+		b.WriteString("\n\nUnmerged commits (not in any other branch):")
+		cap := len(e.UnmergedCommits)
+		if cap > 10 {
+			cap = 10
+		}
+		for _, c := range e.UnmergedCommits[:cap] {
+			fmt.Fprintf(&b, "\n  %s", c)
+		}
+		if len(e.UnmergedCommits) > 10 {
+			fmt.Fprintf(&b, "\n  ... and %d more", len(e.UnmergedCommits)-10)
+		}
+	}
+
+	b.WriteString("\n\nUse --force to remove anyway.")
+	return b.String()
+}
+
 // OrktreeInfo is a read-only snapshot of an orktree's metadata and status.
 type OrktreeInfo struct {
 	ID                 string
@@ -230,13 +288,90 @@ func (m *Manager) List() ([]OrktreeInfo, error) {
 	return infos, nil
 }
 
+// UpperDirFiles returns paths of non-.git files in the overlay upper directory,
+// which represent uncommitted CoW changes. Returns at most limit paths.
+func (m *Manager) UpperDirFiles(ref string, limit int) ([]string, error) {
+	w, err := state.FindOrktree(m.cfg, ref)
+	if err != nil {
+		return nil, err
+	}
+	upper, _, _ := m.cfg.OverlayDirs(w)
+
+	var files []string
+	err = filepath.Walk(upper, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		base := filepath.Base(path)
+		if base == ".git" {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !info.IsDir() {
+			rel, _ := filepath.Rel(upper, path)
+			files = append(files, rel)
+			if len(files) >= limit {
+				return filepath.SkipAll
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walking upper dir: %w", err)
+	}
+	return files, nil
+}
+
 // Remove unmounts the overlay, deregisters the git worktree, and deletes
-// the orktree state entry. When force is true, errors from unmount and
-// worktree removal are ignored.
+// the orktree state entry. When force is true, safety checks and errors
+// from unmount and worktree removal are ignored.
 func (m *Manager) Remove(ref string, force bool) error {
 	w, err := state.FindOrktree(m.cfg, ref)
 	if err != nil {
 		return err
+	}
+
+	// Safety checks — skipped when --force is set.
+	if !force && w.GitTreePath != "" {
+		refused := &RemoveRefusedError{Branch: w.Branch}
+
+		deps := state.Dependents(m.cfg, w.Branch)
+		for _, d := range deps {
+			refused.Dependents = append(refused.Dependents, d.Branch)
+		}
+
+		upper, _, _ := m.cfg.OverlayDirs(w)
+		var dirtyFiles []string
+		_ = filepath.Walk(upper, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			base := filepath.Base(path)
+			if base == ".git" {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !info.IsDir() {
+				rel, _ := filepath.Rel(upper, path)
+				dirtyFiles = append(dirtyFiles, rel)
+				if len(dirtyFiles) > 10 {
+					return filepath.SkipAll
+				}
+			}
+			return nil
+		})
+		refused.DirtyFiles = dirtyFiles
+
+		commits, _ := igit.UnmergedCommits(m.cfg.SourceRoot, w.Branch, 10)
+		refused.UnmergedCommits = commits
+
+		if len(refused.Dependents) > 0 || len(refused.DirtyFiles) > 0 || len(refused.UnmergedCommits) > 0 {
+			return refused
+		}
 	}
 
 	upper, work, merged := m.cfg.OverlayDirs(w)

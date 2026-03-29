@@ -110,6 +110,30 @@ func CreateBranch(repoRoot, branch, from string) error {
 	return nil
 }
 
+// UnmergedCommits returns a list of short commit descriptions on branch that
+// are not reachable from any other local branch. Returns nil if all commits
+// are merged. At most limit entries are returned.
+func UnmergedCommits(repoRoot, branch string, limit int) ([]string, error) {
+	args := []string{
+		"-C", repoRoot, "log",
+		branch,
+		"--not",
+		"--exclude=refs/heads/" + branch,
+		"--branches",
+		"--oneline",
+		fmt.Sprintf("--max-count=%d", limit+1),
+	}
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return nil, fmt.Errorf("checking unmerged commits on %q: %w", branch, err)
+	}
+	text := strings.TrimSpace(string(out))
+	if text == "" {
+		return nil, nil
+	}
+	return strings.Split(text, "\n"), nil
+}
+
 // AddWorktreeNoCheckout registers a git worktree at worktreePath for an
 // already-existing branch without checking out any files.  Only a .git gitfile
 // is written to worktreePath.  This is the zero-cost path: the actual file tree
