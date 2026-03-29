@@ -134,6 +134,29 @@ func UnmergedCommits(repoRoot, branch string, limit int) ([]string, error) {
 	return strings.Split(text, "\n"), nil
 }
 
+// UnmergedCommitCount returns the total number of commits on branch that are
+// not reachable from any other local branch. Unlike UnmergedCommits it returns
+// only the count, avoiding the overhead of formatting and transmitting every
+// log line.
+func UnmergedCommitCount(repoRoot, branch string) (int, error) {
+	args := []string{
+		"-C", repoRoot, "rev-list", "--count",
+		branch,
+		"--not",
+		"--exclude=refs/heads/" + branch,
+		"--branches",
+	}
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return 0, fmt.Errorf("counting unmerged commits on %q: %w", branch, err)
+	}
+	var n int
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n); err != nil {
+		return 0, fmt.Errorf("parsing rev-list --count output: %w", err)
+	}
+	return n, nil
+}
+
 // CheckIgnored returns the subset of paths that would be ignored by .gitignore
 // rules in the given repository. Paths should be relative to the repo root.
 func CheckIgnored(repoRoot string, paths []string) ([]string, error) {

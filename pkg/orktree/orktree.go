@@ -21,64 +21,6 @@ type Manager struct {
 	cfg *state.Config
 }
 
-// RemoveRefusedError is returned by Remove when safety checks fail.
-type RemoveRefusedError struct {
-	Branch          string
-	Dependents      []string // branch names of dependent orktrees
-	UnmergedCommits []string // short commit descriptions
-	DirtyFiles      []string // relative paths in upper dir
-}
-
-func (e *RemoveRefusedError) Error() string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "refusing to remove %q — has unmerged work", e.Branch)
-
-	if len(e.Dependents) > 0 {
-		b.WriteString("\n\nDependent orktrees (stacked on this one):")
-		cap := len(e.Dependents)
-		if cap > 10 {
-			cap = 10
-		}
-		for _, d := range e.Dependents[:cap] {
-			fmt.Fprintf(&b, "\n  %s", d)
-		}
-		if len(e.Dependents) > 10 {
-			fmt.Fprintf(&b, "\n  ... and %d more", len(e.Dependents)-10)
-		}
-	}
-
-	if len(e.DirtyFiles) > 0 {
-		b.WriteString("\n\nUncommitted changes in overlay:")
-		cap := len(e.DirtyFiles)
-		if cap > 10 {
-			cap = 10
-		}
-		for _, f := range e.DirtyFiles[:cap] {
-			fmt.Fprintf(&b, "\n  %s", f)
-		}
-		if len(e.DirtyFiles) > 10 {
-			fmt.Fprintf(&b, "\n  ... and %d more", len(e.DirtyFiles)-10)
-		}
-	}
-
-	if len(e.UnmergedCommits) > 0 {
-		b.WriteString("\n\nUnmerged commits (not in any other branch):")
-		cap := len(e.UnmergedCommits)
-		if cap > 10 {
-			cap = 10
-		}
-		for _, c := range e.UnmergedCommits[:cap] {
-			fmt.Fprintf(&b, "\n  %s", c)
-		}
-		if len(e.UnmergedCommits) > 10 {
-			fmt.Fprintf(&b, "\n  ... and %d more", len(e.UnmergedCommits)-10)
-		}
-	}
-
-	b.WriteString("\n\nUse --force to remove anyway.")
-	return b.String()
-}
-
 // RemoveCheck is a read-only assessment of what would be lost by removing an orktree.
 type RemoveCheck struct {
 	Branch          string
@@ -374,12 +316,18 @@ func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
 	}
 
 	// Dirty files in the overlay upper dir.
-	dirtyFiles, _, _ := overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), 0)
+	dirtyFiles, _, err := overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), 0)
+	if err != nil {
+		return nil, fmt.Errorf("assessing overlay changes: %w", err)
+	}
 
 	if w.GitTreePath != "" {
 		// Classify dirty files using git ignore rules.
 		ignoredSet := make(map[string]bool)
 		if len(dirtyFiles) > 0 {
+			// Intentionally discarding error: if check-ignore fails we skip
+			// classification and treat all files as non-ignored, producing
+			// conservative over-warning rather than silent suppression.
 			ignored, _ := igit.CheckIgnored(m.cfg.SourceRoot, dirtyFiles)
 			for _, p := range ignored {
 				ignoredSet[p] = true
@@ -405,13 +353,14 @@ func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
 			}
 		}
 
-		// Unmerged commits — request 11 to detect overflow.
-		commits, _ := igit.UnmergedCommits(m.cfg.SourceRoot, w.Branch, 11)
-		rc.UnmergedTotal = len(commits)
-		if len(commits) > 10 {
-			commits = commits[:10]
-		}
+		// Unmerged commits.
+		commits, _ := igit.UnmergedCommits(m.cfg.SourceRoot, w.Branch, 10)
 		rc.UnmergedCommits = commits
+		if total, err := igit.UnmergedCommitCount(m.cfg.SourceRoot, w.Branch); err == nil {
+			rc.UnmergedTotal = total
+		} else {
+			rc.UnmergedTotal = len(commits)
+		}
 	} else {
 		// NoGit mode: treat all dirty files as untracked.
 		rc.UntrackedTotal = len(dirtyFiles)

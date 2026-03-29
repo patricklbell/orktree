@@ -3,7 +3,6 @@ package orktree_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/patricklbell/orktree/pkg/orktree"
@@ -117,66 +116,3 @@ func TestRemoveCheck_HasBlockers(t *testing.T) {
 	}
 }
 
-func TestRemoveRefusedError_formatting(t *testing.T) {
-	t.Run("all sections populated", func(t *testing.T) {
-		e := &orktree.RemoveRefusedError{
-			Branch:     "feature",
-			Dependents: []string{"feature-v2", "feature-v3"},
-			DirtyFiles: []string{"src/parser.go", "src/parser_test.go"},
-			UnmergedCommits: []string{
-				"a1b2c3d add parser error recovery",
-				"d4e5f6a fix lexer edge case",
-			},
-		}
-		msg := e.Error()
-		for _, want := range []string{
-			`refusing to remove "feature"`,
-			"Dependent orktrees",
-			"feature-v2",
-			"feature-v3",
-			"Uncommitted changes in overlay",
-			"src/parser.go",
-			"src/parser_test.go",
-			"Unmerged commits (not in any other branch)",
-			"a1b2c3d add parser error recovery",
-			"d4e5f6a fix lexer edge case",
-			"Use --force to remove anyway.",
-		} {
-			if !strings.Contains(msg, want) {
-				t.Errorf("Error() missing %q\ngot:\n%s", want, msg)
-			}
-		}
-	})
-
-	t.Run("only dirty files", func(t *testing.T) {
-		e := &orktree.RemoveRefusedError{
-			Branch:     "wip",
-			DirtyFiles: []string{"README.md"},
-		}
-		msg := e.Error()
-		if strings.Contains(msg, "Dependent") {
-			t.Errorf("should not contain Dependent section:\n%s", msg)
-		}
-		if strings.Contains(msg, "Unmerged commits") {
-			t.Errorf("should not contain Unmerged commits section:\n%s", msg)
-		}
-		if !strings.Contains(msg, "README.md") {
-			t.Errorf("missing dirty file:\n%s", msg)
-		}
-	})
-
-	t.Run("truncation at 10 items", func(t *testing.T) {
-		files := make([]string, 13)
-		for i := range files {
-			files[i] = "file" + strings.Repeat("x", i)
-		}
-		e := &orktree.RemoveRefusedError{
-			Branch:     "big",
-			DirtyFiles: files,
-		}
-		msg := e.Error()
-		if !strings.Contains(msg, "... and 3 more") {
-			t.Errorf("expected truncation message, got:\n%s", msg)
-		}
-	})
-}

@@ -362,6 +362,8 @@ func cmdShellInit(args []string) error {
 // ---------------------------------------------------------------------------
 
 // isTerminal reports whether the given file descriptor refers to a terminal.
+// Uses a raw TCGETS ioctl instead of golang.org/x/term to avoid an external
+// dependency — orktree targets Linux only where TCGETS is stable.
 func isTerminal(fd uintptr) bool {
 	var termios syscall.Termios
 	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TCGETS, uintptr(unsafe.Pointer(&termios)))
