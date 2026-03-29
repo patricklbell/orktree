@@ -19,20 +19,42 @@ orktree-rm - remove an orktree
 Remove the orktree for the given branch. This unmounts the overlay,
 deregisters the git worktree, and deletes all state.
 
-Before removing, **orktree rm** performs several safety checks and
-refuses removal when any of the following are true:
+If the orktree is clean (no changed files, no unmerged commits), it is
+removed immediately without prompting.
 
-- The overlay has **uncommitted changes** (files written to the upper
-  directory that have not been committed).
-- The branch has **unmerged commits** that do not appear in any other
-  branch.
-- Other orktrees **depend on this one** as their base (stacked via
-  **--from**).
+When the orktree has unsaved work, **orktree rm** prints a categorized
+assessment of what would be lost:
 
-Pass **--force** to bypass all safety checks.
+**Commits only on this branch:**
+: Commits reachable only from this branch (not merged into any other
+  branch). Up to 10 are listed; the remainder is shown as a count.
 
-If the overlay cannot be unmounted (e.g. a process has its working
-directory inside the mount), a lazy unmount is attempted as a fallback.
+**Modified tracked files:**
+: Files that differ from the base. Up to 10 are listed.
+
+**Untracked files:**
+: New files not covered by *.gitignore*. Up to 10 are listed.
+
+**Ignored files:**
+: Gitignored files (build artifacts, caches). Only a count is shown.
+
+In a terminal, the user is prompted for confirmation. The default
+depends on the severity of the changes:
+
+- **[y/N]** (default No) when there are unmerged commits or modified
+  tracked files.
+- **[Y/n]** (default Yes) when only untracked or ignored files remain.
+
+In a non-interactive environment (no TTY), the assessment is printed
+followed by a message to pass **--force** to remove without
+confirmation, and the command exits with an error.
+
+## Dependents
+
+If other orktrees depend on this one as their base layer (stacked via
+**--from**), removal is always refused — even with **--force**. The
+dependent orktrees must be removed first or re-stacked with a different
+base.
 
 # OPTIONS
 
@@ -40,20 +62,20 @@ directory inside the mount), a lazy unmount is attempted as a fallback.
 : The branch name, orktree ID, or unique prefix of the orktree to remove.
 
 **--force**, **-f**
-: Bypass all safety checks and force removal. This skips the uncommitted
-  changes, unmerged commits, and dependent orktrees checks, and also
-  forces unmount when the overlay is busy.
+: Skip the safety assessment and confirmation prompt, removing the
+  orktree immediately. Does **not** override the dependents check —
+  orktrees with dependents are always refused.
 
 **--help**, **-h**
 : Print usage information.
 
 # EXAMPLES
 
-Remove an orktree:
+Remove a clean orktree (no prompt):
 
     orktree rm fix-parser
 
-Force removal when the mount is busy:
+Force removal, skipping the interactive assessment:
 
     orktree rm fix-parser --force
 
