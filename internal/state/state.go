@@ -55,7 +55,7 @@ func StatePath(sourceRoot string) string {
 func Load(sourceRoot string) (*Config, error) {
 	data, err := os.ReadFile(StatePath(sourceRoot))
 	if err != nil {
-		return nil, fmt.Errorf("reading state: %w (did you run 'orktree init'?)", err)
+		return nil, fmt.Errorf("reading state: %w", err)
 	}
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {

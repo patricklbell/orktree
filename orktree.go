@@ -118,7 +118,7 @@ func Discover(startDir string) (*Manager, error) {
 		}
 		dir = parent
 	}
-	return nil, fmt.Errorf("no .orktree state found in %s or any parent directory (did you run 'orktree init'?)", abs)
+	return nil, fmt.Errorf("no orktree workspace found in %s or any parent directory", abs)
 }
 
 // CheckPrerequisites reports whether fuse-overlayfs, /dev/fuse, and git

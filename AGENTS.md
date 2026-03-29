@@ -37,19 +37,18 @@ State is stored in `<repo-name>.orktree/state.json` next to the repository root.
 
 | Command                        | Description                                              |
 |-------------------------------|----------------------------------------------------------|
-| `orktree check`                | Check prerequisites; print fix commands for missing ones |
-| `orktree init [--source <dir>]` | Initialise orktree in a directory (creates `.orktree/state.json`) |
-| `orktree switch <branch> [--from <base>] [--no-git]` | Enter orktree (auto-creates if absent) |
+| `orktree switch <branch> [--from <base>] [--no-git]` | Enter orktree (auto-creates if absent; auto-inits) |
 | `orktree switch -`             | Return to the source root                                |
 | `orktree ls [--quiet]`         | List all orktrees with status and merged path            |
 | `orktree path <branch> [--from <base>] [--no-git]` | Print workspace path (auto-creates if absent) |
 | `orktree rm <branch> [--force]` | Unmount overlay, deregister git worktree, delete state  |
 | `orktree shell-init [--shell bash\|zsh]` | Print shell integration snippet (eval in .bashrc/.zshrc) |
 
+`orktree check` is a hidden diagnostic command (not in `--help`).
+
 `<branch>` accepts: exact branch name, full orktree ID, or a unique prefix.
 Branch names containing `/` (e.g. `feature/my-branch`) create nested directories
 inside the sibling dir (e.g. `myrepo.orktree/feature/my-branch/`).
-`orktree new` is a deprecated alias for `orktree switch`.
 
 ### Zero-cost orktrees
 
