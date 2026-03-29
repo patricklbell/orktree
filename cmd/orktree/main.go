@@ -382,6 +382,9 @@ func formatAssessment(rc *orktree.RemoveCheck) string {
 		if cap > 10 {
 			cap = 10
 		}
+		if cap > len(rc.UnmergedCommits) {
+			cap = len(rc.UnmergedCommits)
+		}
 		for _, c := range rc.UnmergedCommits[:cap] {
 			fmt.Fprintf(&b, "\n  %s", c)
 		}
@@ -398,6 +401,9 @@ func formatAssessment(rc *orktree.RemoveCheck) string {
 		if cap > 10 {
 			cap = 10
 		}
+		if cap > len(rc.TrackedDirty) {
+			cap = len(rc.TrackedDirty)
+		}
 		for _, f := range rc.TrackedDirty[:cap] {
 			fmt.Fprintf(&b, "\n  %s", f)
 		}
@@ -413,6 +419,9 @@ func formatAssessment(rc *orktree.RemoveCheck) string {
 		cap := rc.UntrackedTotal
 		if cap > 10 {
 			cap = 10
+		}
+		if cap > len(rc.UntrackedDirty) {
+			cap = len(rc.UntrackedDirty)
 		}
 		for _, f := range rc.UntrackedDirty[:cap] {
 			fmt.Fprintf(&b, "\n  %s", f)

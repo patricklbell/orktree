@@ -121,7 +121,7 @@ func UnmergedCommits(repoRoot, branch string, limit int) ([]string, error) {
 		"--exclude=refs/heads/" + branch,
 		"--branches",
 		"--oneline",
-		fmt.Sprintf("--max-count=%d", limit+1),
+		fmt.Sprintf("--max-count=%d", limit),
 	}
 	out, err := exec.Command("git", args...).Output()
 	if err != nil {
