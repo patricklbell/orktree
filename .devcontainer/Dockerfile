@@ -3,6 +3,7 @@ FROM golang:1.23-bullseye
 RUN apt-get update && apt-get install -y \
     fuse-overlayfs \
     sudo \
+    pandoc \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m devuser && echo "devuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
