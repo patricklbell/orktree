@@ -76,6 +76,8 @@ orktree switch hotfix --from v1.2.3
 orktree.go                   ← public Go API (Manager, Init, Discover, etc.)
 orktree_test.go              ← public API tests
 cmd/orktree/main.go          ← thin CLI wrapper (flag parsing, output formatting)
+completions/orktree.bash     ← bash completion + shell wrapper
+completions/orktree.zsh      ← zsh completion + shell wrapper
 internal/git/git.go          ← git worktree helpers
 internal/overlay/overlay.go  ← fuse-overlayfs mount/unmount helpers
 internal/state/state.go      ← JSON state read/write + path helpers

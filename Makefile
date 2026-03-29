@@ -5,7 +5,7 @@ GO_FILES := $(shell find . -name '*.go')
 MAN_SRCS := $(wildcard doc/*.1.md)
 MAN_PAGES := $(patsubst doc/%.1.md,man/man1/%.1,$(MAN_SRCS))
 
-.PHONY: all build test vet clean install man
+.PHONY: all build test vet clean install install-completions uninstall man
 
 all: build
 
@@ -30,6 +30,20 @@ install: orktree man
 	install -Dm755 orktree $(PREFIX)/bin/orktree
 	@for f in man/man1/*.1; do \
 		install -Dm644 "$$f" "$(PREFIX)/share/man/man1/$$(basename $$f)"; \
+	done
+	install -Dm644 completions/orktree.bash $(PREFIX)/share/bash-completion/completions/orktree
+	install -Dm644 completions/orktree.zsh $(PREFIX)/share/zsh/site-functions/_orktree
+
+install-completions:
+	install -Dm644 completions/orktree.bash $(PREFIX)/share/bash-completion/completions/orktree
+	install -Dm644 completions/orktree.zsh $(PREFIX)/share/zsh/site-functions/_orktree
+
+uninstall:
+	rm -f $(PREFIX)/bin/orktree
+	rm -f $(PREFIX)/share/bash-completion/completions/orktree
+	rm -f $(PREFIX)/share/zsh/site-functions/_orktree
+	@for f in man/man1/*.1; do \
+		rm -f "$(PREFIX)/share/man/man1/$$(basename $$f)"; \
 	done
 
 clean:
