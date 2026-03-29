@@ -10,13 +10,36 @@ lowerdir — no files are duplicated.
 
 ## Installation
 
-### From releases
+### Package install (recommended)
 
-Download the latest binary from the
-[Releases](https://github.com/patricklbell/orktree/releases) page:
+Download the package for your distribution from the
+[Releases](https://github.com/patricklbell/orktree/releases) page.
+Packages include shell completions, man pages, and declare dependencies on
+`fuse-overlayfs` and `git`.
+
+**Debian / Ubuntu:**
 
 ```sh
-# Linux amd64
+# amd64
+curl -LO https://github.com/patricklbell/orktree/releases/latest/download/orktree_VERSION_amd64.deb
+sudo apt install ./orktree_VERSION_amd64.deb
+```
+
+**Fedora / RHEL:**
+
+```sh
+# amd64
+sudo dnf install https://github.com/patricklbell/orktree/releases/latest/download/orktree-VERSION-1.amd64.rpm
+```
+
+Replace `VERSION` with the release version (e.g. `0.3.0`) and `amd64` with
+`arm64` for ARM systems.
+
+### From binary
+
+Download a standalone binary (no completions or man pages):
+
+```sh
 curl -Lo orktree https://github.com/patricklbell/orktree/releases/latest/download/orktree-linux-amd64
 chmod +x orktree
 sudo mv orktree /usr/local/bin/
@@ -24,13 +47,7 @@ sudo mv orktree /usr/local/bin/
 
 ### From source
 
-Requires [Go](https://go.dev/dl/) 1.23 or later.
-
-```sh
-go install github.com/patricklbell/orktree/cmd/orktree@latest
-```
-
-Or clone and build locally:
+Requires [Go](https://go.dev/dl/) 1.23+ and [pandoc](https://pandoc.org/) for man pages.
 
 ```sh
 git clone https://github.com/patricklbell/orktree.git
