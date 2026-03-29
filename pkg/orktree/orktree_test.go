@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patricklbell/orktree"
+	"github.com/patricklbell/orktree/pkg/orktree"
 )
 
 func TestInit_createsStateAndReturnsManager(t *testing.T) {

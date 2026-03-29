@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/patricklbell/orktree"
+	"github.com/patricklbell/orktree/pkg/orktree"
 )
 
 func main() {
