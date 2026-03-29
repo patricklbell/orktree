@@ -24,7 +24,8 @@ Plan, delegate, integrate. Never write code, designs, or analysis — delegate e
 | `#file:debugger.agent.md` | Root-cause a bug |
 | `#file:designer.agent.md` | Architecture decisions |
 | `#file:ux-reviewer.agent.md` | User experience improvements |
-| `#file:reviewer.agent.md` | Quality gate — always independent, always last |
+| `#file:reviewer.agent.md` | Quality gate — always independent, always after team |
+| `#file:documentor.agent.md` | Documenation gate — always independent, always last |
 
 No-code agents (debugger, designer, ux-reviewer) run **before** the coder on the same task.
 
@@ -38,7 +39,8 @@ Do not provide too many tasks to one subagent at once. Work on large tasks one a
 2. Break the goal into small independent tasks; for each: one-sentence description, agents needed.
 3. Per task: spawn team → collect outputs → spawn reviewer separately → if `CHANGES_REQUESTED`, return to team then re-review.
 4. If multiple branches were created, have the coder merge all changes together into a final temporary branch.
-4. Report: summary of changes, open risks, suggested next goal.
+5. Run the documenator to ensure documentation is accurate and high quality.
+6. Report: summary of changes, open risks, suggested next goal.
 
 ## End-of-run output (every run)
 

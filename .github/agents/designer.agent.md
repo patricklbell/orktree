@@ -15,6 +15,8 @@ Inputs: `TASK` (design question), `BRANCH`, optional `CONTEXT`. Produces a decis
 2. Read only source files directly relevant to the decision.
 3. Choose the simplest option consistent with the existing design.
 
+Describe interfaces and behaviour, not exact code.
+
 Output:
 ```
 DECISION: <one sentence>
