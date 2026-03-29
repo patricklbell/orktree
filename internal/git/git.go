@@ -134,6 +134,37 @@ func UnmergedCommits(repoRoot, branch string, limit int) ([]string, error) {
 	return strings.Split(text, "\n"), nil
 }
 
+// CheckIgnored returns the subset of paths that would be ignored by .gitignore
+// rules in the given repository. Paths should be relative to the repo root.
+func CheckIgnored(repoRoot string, paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	cmd := exec.Command("git", "-C", repoRoot, "check-ignore", "--stdin")
+	cmd.Stdin = strings.NewReader(strings.Join(paths, "\n") + "\n")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		// Exit 0: at least one path is ignored.
+		return parseLines(stdout.String()), nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		// Exit 1: none of the paths are ignored.
+		return nil, nil
+	}
+	return nil, fmt.Errorf("git check-ignore: %s: %w", strings.TrimSpace(stderr.String()), err)
+}
+
+func parseLines(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\n")
+}
+
 // AddWorktreeNoCheckout registers a git worktree at worktreePath for an
 // already-existing branch without checking out any files.  Only a .git gitfile
 // is written to worktreePath.  This is the zero-cost path: the actual file tree

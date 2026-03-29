@@ -115,10 +115,12 @@ func Remove(upper, work, merged string) error {
 // Files that were copied up by the overlay but reverted to identical content
 // are excluded.  Overlayfs whiteout markers (deletions) are always reported.
 // Only file content is compared; permission or mode changes alone are not detected.
-// At most limit paths are returned.
-func DirtyUpperFiles(upper, lower string, limit int) ([]string, error) {
-	var dirty []string
-	err := filepath.Walk(upper, func(path string, info os.FileInfo, walkErr error) error {
+//
+// When limit > 0, at most limit paths are collected in files, but the walk
+// continues so that total reflects the true number of dirty files.
+// When limit <= 0, all dirty paths are collected and total == len(files).
+func DirtyUpperFiles(upper, lower string, limit int) (files []string, total int, err error) {
+	err = filepath.Walk(upper, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -135,41 +137,41 @@ func DirtyUpperFiles(upper, lower string, limit int) ([]string, error) {
 
 		rel, _ := filepath.Rel(upper, path)
 
+		isDirty := false
+
 		// Overlayfs whiteout: character device with rdev 0.
 		if info.Mode()&os.ModeCharDevice != 0 {
 			if st, ok := info.Sys().(*syscall.Stat_t); ok && st.Rdev == 0 {
-				dirty = append(dirty, rel)
-				if len(dirty) >= limit {
-					return filepath.SkipAll
-				}
-				return nil
+				isDirty = true
 			}
 		}
 
 		// Opaque directory marker.
-		if base == ".wh..wh..opq" {
-			dirty = append(dirty, rel)
-			if len(dirty) >= limit {
-				return filepath.SkipAll
-			}
-			return nil
+		if !isDirty && base == ".wh..wh..opq" {
+			isDirty = true
 		}
 
 		// Compare with lower.
-		lowerPath := filepath.Join(lower, rel)
-		equal, err := filesEqual(path, lowerPath)
-		if err != nil || !equal {
-			dirty = append(dirty, rel)
-			if len(dirty) >= limit {
-				return filepath.SkipAll
+		if !isDirty {
+			lowerPath := filepath.Join(lower, rel)
+			equal, err := filesEqual(path, lowerPath)
+			if err != nil || !equal {
+				isDirty = true
+			}
+		}
+
+		if isDirty {
+			total++
+			if limit <= 0 || len(files) < limit {
+				files = append(files, rel)
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("walking upper dir: %w", err)
+		return nil, 0, fmt.Errorf("walking upper dir: %w", err)
 	}
-	return dirty, nil
+	return files, total, nil
 }
 
 // filesEqual reports whether two files have identical content.

@@ -47,3 +47,61 @@ func TestCurrentBranch(t *testing.T) {
 		t.Errorf("CurrentBranch = %q, want %q", branch, "main")
 	}
 }
+
+func TestCheckIgnored(t *testing.T) {
+	repo := t.TempDir()
+	for _, args := range [][]string{
+		{"git", "init", "-b", "main", repo},
+		{"git", "-C", repo, "commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", args, out)
+		}
+	}
+	os.WriteFile(repo+"/.gitignore", []byte("*.log\nbuild/\n"), 0o644)
+
+	ignored, err := CheckIgnored(repo, []string{"main.go", "debug.log", "build/out.bin", "README.md"})
+	if err != nil {
+		t.Fatalf("CheckIgnored: %v", err)
+	}
+	want := map[string]bool{"debug.log": true, "build/out.bin": true}
+	if len(ignored) != len(want) {
+		t.Fatalf("expected %d ignored paths, got %v", len(want), ignored)
+	}
+	for _, p := range ignored {
+		if !want[p] {
+			t.Errorf("unexpected ignored path: %q", p)
+		}
+	}
+}
+
+func TestCheckIgnored_emptyPaths(t *testing.T) {
+	ignored, err := CheckIgnored("/tmp", nil)
+	if err != nil {
+		t.Fatalf("CheckIgnored: %v", err)
+	}
+	if ignored != nil {
+		t.Errorf("expected nil, got %v", ignored)
+	}
+}
+
+func TestCheckIgnored_noneIgnored(t *testing.T) {
+	repo := t.TempDir()
+	cmd := exec.Command("git", "init", "-b", "main", repo)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %s", out)
+	}
+
+	ignored, err := CheckIgnored(repo, []string{"main.go", "README.md"})
+	if err != nil {
+		t.Fatalf("CheckIgnored: %v", err)
+	}
+	if ignored != nil {
+		t.Errorf("expected nil, got %v", ignored)
+	}
+}

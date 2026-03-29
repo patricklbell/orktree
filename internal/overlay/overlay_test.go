@@ -46,12 +46,15 @@ func TestDirtyUpperFiles_identicalFileNotDirty(t *testing.T) {
 	os.WriteFile(filepath.Join(upper, "file.txt"), content, 0o644)
 	os.WriteFile(filepath.Join(lower, "file.txt"), content, 0o644)
 
-	dirty, err := DirtyUpperFiles(upper, lower, 100)
+	dirty, total, err := DirtyUpperFiles(upper, lower, 100)
 	if err != nil {
 		t.Fatalf("DirtyUpperFiles: %v", err)
 	}
 	if len(dirty) != 0 {
 		t.Errorf("expected no dirty files, got %v", dirty)
+	}
+	if total != 0 {
+		t.Errorf("expected total 0, got %d", total)
 	}
 }
 
@@ -61,12 +64,15 @@ func TestDirtyUpperFiles_differentFileIsDirty(t *testing.T) {
 	os.WriteFile(filepath.Join(upper, "file.txt"), []byte("modified"), 0o644)
 	os.WriteFile(filepath.Join(lower, "file.txt"), []byte("original"), 0o644)
 
-	dirty, err := DirtyUpperFiles(upper, lower, 100)
+	dirty, total, err := DirtyUpperFiles(upper, lower, 100)
 	if err != nil {
 		t.Fatalf("DirtyUpperFiles: %v", err)
 	}
 	if len(dirty) != 1 || dirty[0] != "file.txt" {
 		t.Errorf("expected [file.txt], got %v", dirty)
+	}
+	if total != 1 {
+		t.Errorf("expected total 1, got %d", total)
 	}
 }
 
@@ -75,12 +81,15 @@ func TestDirtyUpperFiles_newFileIsDirty(t *testing.T) {
 	lower := t.TempDir()
 	os.WriteFile(filepath.Join(upper, "newfile.txt"), []byte("new"), 0o644)
 
-	dirty, err := DirtyUpperFiles(upper, lower, 100)
+	dirty, total, err := DirtyUpperFiles(upper, lower, 100)
 	if err != nil {
 		t.Fatalf("DirtyUpperFiles: %v", err)
 	}
 	if len(dirty) != 1 || dirty[0] != "newfile.txt" {
 		t.Errorf("expected [newfile.txt], got %v", dirty)
+	}
+	if total != 1 {
+		t.Errorf("expected total 1, got %d", total)
 	}
 }
 
@@ -91,12 +100,15 @@ func TestDirtyUpperFiles_gitDirSkipped(t *testing.T) {
 	os.MkdirAll(gitDir, 0o755)
 	os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main"), 0o644)
 
-	dirty, err := DirtyUpperFiles(upper, lower, 100)
+	dirty, total, err := DirtyUpperFiles(upper, lower, 100)
 	if err != nil {
 		t.Fatalf("DirtyUpperFiles: %v", err)
 	}
 	if len(dirty) != 0 {
 		t.Errorf("expected no dirty files, got %v", dirty)
+	}
+	if total != 0 {
+		t.Errorf("expected total 0, got %d", total)
 	}
 }
 
@@ -108,12 +120,15 @@ func TestDirtyUpperFiles_limitRespected(t *testing.T) {
 		os.WriteFile(filepath.Join(upper, name), []byte("new"), 0o644)
 	}
 
-	dirty, err := DirtyUpperFiles(upper, lower, 3)
+	dirty, total, err := DirtyUpperFiles(upper, lower, 3)
 	if err != nil {
 		t.Fatalf("DirtyUpperFiles: %v", err)
 	}
 	if len(dirty) != 3 {
 		t.Errorf("expected 3 dirty files, got %d", len(dirty))
+	}
+	if total != 10 {
+		t.Errorf("expected total 10, got %d", total)
 	}
 }
 
@@ -121,12 +136,15 @@ func TestDirtyUpperFiles_emptyUpper(t *testing.T) {
 	upper := t.TempDir()
 	lower := t.TempDir()
 
-	dirty, err := DirtyUpperFiles(upper, lower, 100)
+	dirty, total, err := DirtyUpperFiles(upper, lower, 100)
 	if err != nil {
 		t.Fatalf("DirtyUpperFiles: %v", err)
 	}
 	if len(dirty) != 0 {
 		t.Errorf("expected no dirty files, got %v", dirty)
+	}
+	if total != 0 {
+		t.Errorf("expected total 0, got %d", total)
 	}
 }
 
@@ -136,11 +154,54 @@ func TestDirtyUpperFiles_sameSizeDifferentContent(t *testing.T) {
 	os.WriteFile(filepath.Join(upper, "file.txt"), []byte("aaaa"), 0o644)
 	os.WriteFile(filepath.Join(lower, "file.txt"), []byte("bbbb"), 0o644)
 
-	dirty, err := DirtyUpperFiles(upper, lower, 100)
+	dirty, total, err := DirtyUpperFiles(upper, lower, 100)
 	if err != nil {
 		t.Fatalf("DirtyUpperFiles: %v", err)
 	}
 	if len(dirty) != 1 || dirty[0] != "file.txt" {
 		t.Errorf("expected [file.txt], got %v", dirty)
+	}
+	if total != 1 {
+		t.Errorf("expected total 1, got %d", total)
+	}
+}
+
+func TestDirtyUpperFiles_totalAccurateWhenLimited(t *testing.T) {
+	upper := t.TempDir()
+	lower := t.TempDir()
+	for i := 0; i < 5; i++ {
+		name := fmt.Sprintf("dirty%d.txt", i)
+		os.WriteFile(filepath.Join(upper, name), []byte("new"), 0o644)
+	}
+
+	dirty, total, err := DirtyUpperFiles(upper, lower, 3)
+	if err != nil {
+		t.Fatalf("DirtyUpperFiles: %v", err)
+	}
+	if len(dirty) != 3 {
+		t.Errorf("expected 3 files in slice, got %d", len(dirty))
+	}
+	if total != 5 {
+		t.Errorf("expected total 5, got %d", total)
+	}
+}
+
+func TestDirtyUpperFiles_noLimitCollectsAll(t *testing.T) {
+	upper := t.TempDir()
+	lower := t.TempDir()
+	for i := 0; i < 7; i++ {
+		name := fmt.Sprintf("file%d.txt", i)
+		os.WriteFile(filepath.Join(upper, name), []byte("new"), 0o644)
+	}
+
+	dirty, total, err := DirtyUpperFiles(upper, lower, 0)
+	if err != nil {
+		t.Fatalf("DirtyUpperFiles: %v", err)
+	}
+	if len(dirty) != 7 {
+		t.Errorf("expected 7 files, got %d", len(dirty))
+	}
+	if total != 7 {
+		t.Errorf("expected total 7, got %d", total)
 	}
 }
