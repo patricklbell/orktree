@@ -74,7 +74,9 @@ orktree switch hotfix --from v1.2.3
 ## Repository layout
 
 ```
-cmd/orktree/main.go          ← CLI entry point (commands, flag parsing)
+orktree.go                   ← public Go API (Manager, Init, Discover, etc.)
+orktree_test.go              ← public API tests
+cmd/orktree/main.go          ← thin CLI wrapper (flag parsing, output formatting)
 internal/git/git.go          ← git worktree helpers
 internal/overlay/overlay.go  ← fuse-overlayfs mount/unmount helpers
 internal/state/state.go      ← JSON state read/write + path helpers
@@ -82,6 +84,14 @@ internal/state/state_test.go ← state unit tests
 doc/*.1.md                   ← man page sources (pandoc markdown)
 Makefile                     ← build, test, man page generation, install
 ```
+
+### Porcelain vs plumbing
+
+The root package (`package orktree`) exposes a `Manager` type with methods
+for all orktree operations (Create, EnsureReady, List, Remove, Path, Find).
+The CLI in `cmd/orktree/` is a thin wrapper that parses flags, calls Manager
+methods, and formats output. The library never writes to stdout/stderr or
+calls os.Exit.
 
 ---
 
