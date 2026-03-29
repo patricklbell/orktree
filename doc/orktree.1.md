@@ -26,23 +26,19 @@ no files are duplicated.
 
 # COMMANDS
 
-**check**
-: Check prerequisites; print fix commands for missing ones.
-
-**init** [**--source** *path*]
-: Initialize orktree in a directory.
-
 **switch** *branch* [**--from** *base*] [**--no-git**]
 : Enter an orktree, auto-creating it if it doesn't exist. Use **-** to return to the source root.
 
 **ls** [**--quiet**]
-: List all orktrees with status and path.
+: List all orktrees with status, size, and path.
 
 **path** *branch* [**--from** *base*] [**--no-git**]
 : Print workspace path (auto-creates if absent).
 
 **rm** *branch* [**--force**]
-: Unmount overlay, deregister git worktree, delete state.
+: Remove an orktree. Refuses removal if there are uncommitted overlay
+  changes, unmerged commits, or dependent orktrees. Use **--force** to
+  bypass safety checks.
 
 **shell-init** [**--shell** *bash*|*zsh*]
 : Print shell integration snippet (eval in .bashrc/.zshrc).
@@ -74,8 +70,6 @@ base:
 
 # PREREQUISITES
 
-Run **orktree check** to verify:
-
 - **fuse-overlayfs** — rootless copy-on-write overlay filesystem
 - **fuse group** — /dev/fuse access
 - **git** — version control
@@ -94,4 +88,4 @@ Run **orktree check** to verify:
 
 # SEE ALSO
 
-**orktree-switch**(1), **orktree-init**(1), **orktree-ls**(1), **orktree-path**(1), **orktree-rm**(1), **orktree-check**(1), **git-worktree**(1), **fuse-overlayfs**(1)
+**orktree-switch**(1), **orktree-ls**(1), **orktree-path**(1), **orktree-rm**(1), **git-worktree**(1), **fuse-overlayfs**(1)
