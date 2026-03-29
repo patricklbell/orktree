@@ -2,11 +2,14 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"text/tabwriter"
+	"unsafe"
 
 	"github.com/patricklbell/orktree/pkg/orktree"
 )
@@ -358,6 +361,73 @@ func cmdShellInit(args []string) error {
 // rm
 // ---------------------------------------------------------------------------
 
+// isTerminal reports whether the given file descriptor refers to a terminal.
+func isTerminal(fd uintptr) bool {
+	var termios syscall.Termios
+	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TCGETS, uintptr(unsafe.Pointer(&termios)))
+	return err == 0
+}
+
+// formatAssessment renders a RemoveCheck as a human-readable categorized summary.
+// Only non-empty sections are included; ignored files show only a count.
+func formatAssessment(rc *orktree.RemoveCheck) string {
+	var sections []string
+
+	if rc.UnmergedTotal > 0 {
+		var b strings.Builder
+		b.WriteString("Commits only on this branch:")
+		cap := rc.UnmergedTotal
+		if cap > 10 {
+			cap = 10
+		}
+		for _, c := range rc.UnmergedCommits[:cap] {
+			fmt.Fprintf(&b, "\n  %s", c)
+		}
+		if rc.UnmergedTotal > 10 {
+			fmt.Fprintf(&b, "\n  ... and %d more", rc.UnmergedTotal-10)
+		}
+		sections = append(sections, b.String())
+	}
+
+	if rc.TrackedTotal > 0 {
+		var b strings.Builder
+		b.WriteString("Modified tracked files:")
+		cap := rc.TrackedTotal
+		if cap > 10 {
+			cap = 10
+		}
+		for _, f := range rc.TrackedDirty[:cap] {
+			fmt.Fprintf(&b, "\n  %s", f)
+		}
+		if rc.TrackedTotal > 10 {
+			fmt.Fprintf(&b, "\n  ... and %d more", rc.TrackedTotal-10)
+		}
+		sections = append(sections, b.String())
+	}
+
+	if rc.UntrackedTotal > 0 {
+		var b strings.Builder
+		b.WriteString("Untracked files:")
+		cap := rc.UntrackedTotal
+		if cap > 10 {
+			cap = 10
+		}
+		for _, f := range rc.UntrackedDirty[:cap] {
+			fmt.Fprintf(&b, "\n  %s", f)
+		}
+		if rc.UntrackedTotal > 10 {
+			fmt.Fprintf(&b, "\n  ... and %d more", rc.UntrackedTotal-10)
+		}
+		sections = append(sections, b.String())
+	}
+
+	if rc.IgnoredDirty > 0 {
+		sections = append(sections, fmt.Sprintf("Ignored files (cache/build artifacts): %d files", rc.IgnoredDirty))
+	}
+
+	return strings.Join(sections, "\n\n")
+}
+
 func cmdRm(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: orktree rm <branch> [--force]")
@@ -390,11 +460,79 @@ func cmdRm(args []string) error {
 		return err
 	}
 
-	_ = force // TODO: next task adds interactive prompt via CheckRemove
-	if err := mgr.Remove(ref); err != nil {
+	// Always check for dependents (even with --force).
+	rc, err := mgr.CheckRemove(ref)
+	if err != nil {
 		return err
 	}
 
+	if rc.HasBlockers() {
+		fmt.Fprintf(os.Stderr, "cannot remove %q \u2014 %d other orktree(s) depend on it as a base:\n", rc.Branch, len(rc.Dependents))
+		for _, d := range rc.Dependents {
+			fmt.Fprintf(os.Stderr, "  %s\n", d)
+		}
+		fmt.Fprintln(os.Stderr, "remove the dependent orktrees first, or re-stack them with a different base")
+		return fmt.Errorf("cannot remove %q — has dependents", rc.Branch)
+	}
+
+	if force {
+		if err := mgr.Remove(ref); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Branch)
+		return nil
+	}
+
+	// Clean orktree — remove without prompt.
+	if rc.IsClean() {
+		if err := mgr.Remove(ref); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Branch)
+		return nil
+	}
+
+	// Print categorized assessment.
+	assessment := formatAssessment(rc)
+	fmt.Fprintln(os.Stderr, assessment)
+	fmt.Fprintln(os.Stderr)
+
+	// Determine default: Yes if only untracked/ignored files, No otherwise.
+	onlyMinor := rc.UnmergedTotal == 0 && rc.TrackedTotal == 0
+	defaultYes := onlyMinor
+
+	tty := isTerminal(os.Stdin.Fd()) && isTerminal(os.Stderr.Fd())
+	if !tty {
+		fmt.Fprintln(os.Stderr, "pass --force to remove without confirmation")
+		return fmt.Errorf("cannot confirm removal of %q — not a terminal", rc.Branch)
+	}
+
+	prompt := fmt.Sprintf("Remove orktree %q (%s)? This cannot be undone.", rc.Branch, rc.MergedPath)
+	if defaultYes {
+		fmt.Fprintf(os.Stderr, "%s [Y/n] ", prompt)
+	} else {
+		fmt.Fprintf(os.Stderr, "%s [y/N] ", prompt)
+	}
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	answer := strings.TrimSpace(scanner.Text())
+
+	confirmed := false
+	switch strings.ToLower(answer) {
+	case "y", "yes":
+		confirmed = true
+	case "":
+		confirmed = defaultYes
+	}
+
+	if !confirmed {
+		return fmt.Errorf("removal cancelled")
+	}
+
+	if err := mgr.Remove(ref); err != nil {
+		return err
+	}
 	fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Branch)
 	return nil
 }
