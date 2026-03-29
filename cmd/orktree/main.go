@@ -138,20 +138,49 @@ func cmdLs(args []string) error {
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "BRANCH\tSTATUS\tPATH")
+	fmt.Fprintln(tw, "BRANCH\tSTATUS\tSIZE\tPATH")
+	var total int64
 	for _, info := range infos {
 		status := "unmounted"
 		if info.Mounted {
 			status = "mounted"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\n",
+		size := "?"
+		if info.UpperDirSize >= 0 {
+			size = humanSize(info.UpperDirSize)
+			total += info.UpperDirSize
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
 			info.Branch,
 			status,
+			size,
 			info.MergedPath,
 		)
 	}
+	fmt.Fprintf(tw, "\t\t────\t\n")
+	fmt.Fprintf(tw, "\ttotal\t%s\t\n", humanSize(total))
 	tw.Flush()
 	return nil
+}
+
+// humanSize formats bytes as a human-readable string using base-1024
+// thresholds with short suffixes (B, K, M, G).
+func humanSize(b int64) string {
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+	switch {
+	case b >= gb:
+		return fmt.Sprintf("%.1fG", float64(b)/float64(gb))
+	case b >= mb:
+		return fmt.Sprintf("%.1fM", float64(b)/float64(mb))
+	case b >= kb:
+		return fmt.Sprintf("%.1fK", float64(b)/float64(kb))
+	default:
+		return fmt.Sprintf("%dB", b)
+	}
 }
 
 // ---------------------------------------------------------------------------
