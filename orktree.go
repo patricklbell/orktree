@@ -313,8 +313,9 @@ func (m *Manager) List() ([]OrktreeInfo, error) {
 	return infos, nil
 }
 
-// UpperDirFiles returns paths of non-.git files in the overlay upper directory,
-// which represent uncommitted CoW changes. Returns at most limit paths.
+// UpperDirFiles returns paths of files in the overlay upper directory that
+// genuinely differ from the lower layer. Files copied up by the overlay but
+// reverted to identical content are excluded. Returns at most limit paths.
 func (m *Manager) UpperDirFiles(ref string, limit int) ([]string, error) {
 	w, err := state.FindOrktree(m.cfg, ref)
 	if err != nil {
@@ -322,31 +323,7 @@ func (m *Manager) UpperDirFiles(ref string, limit int) ([]string, error) {
 	}
 	upper, _, _ := m.cfg.OverlayDirs(w)
 
-	var files []string
-	err = filepath.Walk(upper, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		base := filepath.Base(path)
-		if base == ".git" {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !info.IsDir() {
-			rel, _ := filepath.Rel(upper, path)
-			files = append(files, rel)
-			if len(files) >= limit {
-				return filepath.SkipAll
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("walking upper dir: %w", err)
-	}
-	return files, nil
+	return overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), limit)
 }
 
 // Remove unmounts the overlay, deregisters the git worktree, and deletes
@@ -368,27 +345,7 @@ func (m *Manager) Remove(ref string, force bool) error {
 		}
 
 		upper, _, _ := m.cfg.OverlayDirs(w)
-		var dirtyFiles []string
-		_ = filepath.Walk(upper, func(path string, info os.FileInfo, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			base := filepath.Base(path)
-			if base == ".git" {
-				if info.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !info.IsDir() {
-				rel, _ := filepath.Rel(upper, path)
-				dirtyFiles = append(dirtyFiles, rel)
-				if len(dirtyFiles) > 10 {
-					return filepath.SkipAll
-				}
-			}
-			return nil
-		})
+		dirtyFiles, _ := overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), 11)
 		refused.DirtyFiles = dirtyFiles
 
 		commits, _ := igit.UnmergedCommits(m.cfg.SourceRoot, w.Branch, 10)

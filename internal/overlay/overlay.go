@@ -9,10 +9,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // Create creates the upper/work/merged directories for the worktree.
@@ -106,4 +108,112 @@ func Remove(upper, work, merged string) error {
 		return errors.New("could not determine overlay parent directory")
 	}
 	return os.RemoveAll(parent)
+}
+
+// DirtyUpperFiles walks the overlayfs upper directory and returns relative
+// paths of files that genuinely differ from the corresponding file in lower.
+// Files that were copied up by the overlay but reverted to identical content
+// are excluded.  Overlayfs whiteout markers (deletions) are always reported.
+// Only file content is compared; permission or mode changes alone are not detected.
+// At most limit paths are returned.
+func DirtyUpperFiles(upper, lower string, limit int) ([]string, error) {
+	var dirty []string
+	err := filepath.Walk(upper, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		base := filepath.Base(path)
+		if base == ".git" {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		rel, _ := filepath.Rel(upper, path)
+
+		// Overlayfs whiteout: character device with rdev 0.
+		if info.Mode()&os.ModeCharDevice != 0 {
+			if st, ok := info.Sys().(*syscall.Stat_t); ok && st.Rdev == 0 {
+				dirty = append(dirty, rel)
+				if len(dirty) >= limit {
+					return filepath.SkipAll
+				}
+				return nil
+			}
+		}
+
+		// Opaque directory marker.
+		if base == ".wh..wh..opq" {
+			dirty = append(dirty, rel)
+			if len(dirty) >= limit {
+				return filepath.SkipAll
+			}
+			return nil
+		}
+
+		// Compare with lower.
+		lowerPath := filepath.Join(lower, rel)
+		equal, err := filesEqual(path, lowerPath)
+		if err != nil || !equal {
+			dirty = append(dirty, rel)
+			if len(dirty) >= limit {
+				return filepath.SkipAll
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walking upper dir: %w", err)
+	}
+	return dirty, nil
+}
+
+// filesEqual reports whether two files have identical content.
+// Returns false if either file cannot be opened or read.
+func filesEqual(a, b string) (bool, error) {
+	infoA, err := os.Lstat(a)
+	if err != nil {
+		return false, err
+	}
+	infoB, err := os.Lstat(b)
+	if err != nil {
+		return false, err
+	}
+	if infoA.Size() != infoB.Size() {
+		return false, nil
+	}
+	fa, err := os.Open(a)
+	if err != nil {
+		return false, err
+	}
+	defer fa.Close()
+	fb, err := os.Open(b)
+	if err != nil {
+		return false, err
+	}
+	defer fb.Close()
+
+	const chunk = 32 * 1024
+	bufA := make([]byte, chunk)
+	bufB := make([]byte, chunk)
+	for {
+		nA, errA := io.ReadFull(fa, bufA)
+		nB, errB := io.ReadFull(fb, bufB)
+		if !bytes.Equal(bufA[:nA], bufB[:nB]) {
+			return false, nil
+		}
+		if errors.Is(errA, io.EOF) && errors.Is(errB, io.EOF) {
+			return true, nil
+		}
+		if errors.Is(errA, io.ErrUnexpectedEOF) && errors.Is(errB, io.ErrUnexpectedEOF) {
+			return true, nil
+		}
+		if errA != nil || errB != nil {
+			return false, nil
+		}
+	}
 }
