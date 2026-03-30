@@ -1,5 +1,3 @@
-// Package orktree provides a public API for managing copy-on-write orktrees
-// backed by fuse-overlayfs and git worktrees.
 package orktree
 
 import (
@@ -10,24 +8,227 @@ import (
 	"strings"
 	"time"
 
-	igit "github.com/patricklbell/orktree/internal/git"
+	"github.com/patricklbell/orktree/internal/git"
 	"github.com/patricklbell/orktree/internal/overlay"
 	"github.com/patricklbell/orktree/internal/state"
 )
 
-// IsOverlayWhiteout reports whether the path represents an overlayfs
-// whiteout marker (internal metadata for file deletion or directory opacity).
-func IsOverlayWhiteout(relPath string) bool {
-	return strings.HasPrefix(filepath.Base(relPath), ".wh.")
+type Index struct {
+	state *state.State
 }
 
-// Manager wraps all orchestration logic for a single orktree-managed
-// repository. Obtain one via Init, NewManager, or Discover.
-type Manager struct {
-	cfg *state.Config
+func (i *Index) SourceRoot() string {
+	return i.state.SourceRoot
 }
 
-// RemoveCheck is a read-only assessment of what would be lost by removing an orktree.
+func (i *Index) IsGitRepo() bool {
+	return i.state.IsGitRepo
+}
+
+// Prerequisite describes a single prerequisite check result.
+type Prerequisite struct {
+	Name string
+	Fix  string
+	OK   bool
+}
+
+func CheckEnvironmentPrerequisites() []Prerequisite {
+	_, fuseOfsErr := exec.LookPath("fuse-overlayfs")
+	_, gitErr := exec.LookPath("git")
+	return []Prerequisite{
+		{
+			Name: "fuse-overlayfs",
+			Fix:  "sudo apt-get install fuse-overlayfs   # or: dnf / pacman / brew equivalent",
+			OK:   fuseOfsErr == nil,
+		},
+		{
+			Name: "fuse group (/dev/fuse)",
+			Fix:  "sudo usermod -aG fuse $USER",
+			OK:   canAccessFuseDev(),
+		},
+		{
+			Name: "git",
+			Fix:  "install git: https://git-sci.com/downloads",
+			OK:   gitErr == nil,
+		},
+	}
+}
+
+// read-only snapshot of an orktree's metadata
+type OrktreeMetadata struct {
+	ID                 string
+	Branch             string
+	MergedPath         string
+	Mounted            bool
+	LowerOrktreeBranch string
+	CreatedAt          time.Time
+	UpperDirSize       int64 // bytes consumed in the CoW upper dir; -1 if unknown
+}
+
+// ---------------------------------------------------------------------------
+// Create
+// ---------------------------------------------------------------------------
+
+// initialises new orktree index for sourceRoot: creates the sibling data directory
+// and state.json. Idempotent — if state already exists it is loaded without modification.
+func CreateIndex(sourceRoot string) (*Index, error) {
+	if cfg, loadErr := state.Load(sourceRoot); loadErr == nil {
+		return &Index{state: cfg}, nil
+	}
+	isGit := git.IsGitRepo(sourceRoot)
+	cfg, err := state.Init(sourceRoot, isGit)
+	if err != nil {
+		return nil, err
+	}
+	return &Index{state: cfg}, nil
+}
+
+// Loads existing orktree state for sourceRoot.
+// Returns an error if orktree has not been initialised.
+func LoadIndex(sourceRoot string) (*Index, error) {
+	cfg, err := state.Load(sourceRoot)
+	if err != nil {
+		return nil, err
+	}
+	return &Index{state: cfg}, nil
+}
+
+// Walks up from startDir to locate an initialised orktree,
+func DiscoverIndex(startDir string) (*Index, error) {
+	currDir := startDir
+	for {
+		// Case 1: source root — look for siblingIndexDir .orktree/state.json
+		siblingIndexDir := filepath.Join(filepath.Dir(currDir), filepath.Base(currDir)+".orktree")
+		if _, err := os.Stat(filepath.Join(siblingIndexDir, state.StateFile)); err == nil {
+			cfg, err := state.Load(currDir)
+			if err != nil {
+				return nil, err
+			}
+			return &Index{state: cfg}, nil
+		}
+
+		// Case 2: inside a merged view — the .orktree suffix reveals the source root
+		currBase := filepath.Base(currDir)
+		if strings.HasSuffix(currBase, ".orktree") {
+			if _, err := os.Stat(filepath.Join(currDir, state.StateFile)); err == nil {
+				srcRoot := filepath.Join(filepath.Dir(currDir), strings.TrimSuffix(currBase, ".orktree"))
+				cfg, err := state.Load(srcRoot)
+				if err != nil {
+					return nil, err
+				}
+				return &Index{state: cfg}, nil
+			}
+		}
+
+		parentDir := filepath.Dir(currDir)
+		if parentDir == currDir {
+			break
+		}
+		currDir = parentDir
+	}
+	return nil, fmt.Errorf("no orktree workspace found in %s or any parent directory", startDir)
+}
+
+// controls orktree creation behaviour.
+type CreateOrktreeOptions struct {
+	From  string // base branch, git ref, or existing orktree
+	NoGit bool   // skip git worktree registration (overlay-only)
+}
+
+// adds a state entry, sets up git (unless NoGit), and mounts the overlay.
+// Returns info for the newly created orktree.
+func (i *Index) CreateOrktree(branch string, opts CreateOrktreeOptions) (OrktreeMetadata, error) {
+	if err := validateBranchName(branch); err != nil {
+		return OrktreeMetadata{}, err
+	}
+	if _, err := state.FindOrktree(i.state, branch); err == nil {
+		return OrktreeMetadata{}, fmt.Errorf("orktree %q already exists", branch)
+	}
+
+	w, err := state.NewOrktree(i.state, branch)
+	if err != nil {
+		return OrktreeMetadata{}, err
+	}
+
+	upper, work, merged := i.state.OverlayDirs(w)
+
+	var lowerDir string
+	if i.state.IsGitRepo && !opts.NoGit {
+		lowerDir, err = i.setupGitForOrktree(&w, branch, opts.From, upper)
+		if err != nil {
+			state.RemoveOrktree(i.state, w.ID) //nolint:errcheck
+			return OrktreeMetadata{}, err
+		}
+		if err := state.UpdateOrktree(i.state, w); err != nil {
+			return OrktreeMetadata{}, err
+		}
+	} else {
+		lowerDir = i.state.SourceRoot
+	}
+
+	if err := overlay.Create(upper, work, merged); err != nil {
+		state.RemoveOrktree(i.state, w.ID) //nolint:errcheck
+		return OrktreeMetadata{}, err
+	}
+	if err := overlay.Mount(lowerDir, upper, work, merged); err != nil {
+		state.RemoveOrktree(i.state, w.ID) //nolint:errcheck
+		return OrktreeMetadata{}, err
+	}
+
+	return i.createOrktreeInfo(w)
+}
+
+// Finds or creates the orktree for branch and ensures it
+// (and any ancestor overlays) are mounted. This is the method that the
+// switch and path commands use.
+func (i *Index) EnsureOrktree(branch string, opts CreateOrktreeOptions) (OrktreeMetadata, error) {
+	w, err := state.FindOrktree(i.state, branch)
+	if err != nil {
+		return i.CreateOrktree(branch, opts)
+	}
+	if opts.From != "" || opts.NoGit {
+		return OrktreeMetadata{}, fmt.Errorf("orktree %q already exists; --from and --no-git are only used during creation", branch)
+	}
+	if err := i.ensureMountedWithAncestors(w, make(map[string]bool)); err != nil {
+		return OrktreeMetadata{}, err
+	}
+	return i.createOrktreeInfo(w)
+}
+
+// ---------------------------------------------------------------------------
+// List
+// ---------------------------------------------------------------------------
+
+func (i *Index) ListOrktrees() ([]OrktreeMetadata, error) {
+	infos := make([]OrktreeMetadata, 0, len(i.state.Orktrees))
+	for _, w := range i.state.Orktrees {
+		info, err := i.createOrktreeInfo(w)
+		if err != nil {
+			return nil, err
+		}
+		infos = append(infos, info)
+	}
+	return infos, nil
+}
+
+// Paths of files in the overlay upper directory that
+// genuinely differ from the lower layer. Files copied up by the overlay but
+// reverted to identical content are excluded. Returns at most limit paths and
+// the total count of dirty files (which may exceed len(files) when truncated).
+func (i *Index) ListOrktreesUpperDirFiles(branch string, limit int) (files []string, count int, err error) {
+	w, err := state.FindOrktree(i.state, branch)
+	if err != nil {
+		return nil, 0, err
+	}
+	upper, _, _ := i.state.OverlayDirs(w)
+
+	return overlay.DirtyUpperFiles(upper, i.state.MountPath(w), limit)
+}
+
+// ---------------------------------------------------------------------------
+// Remove
+// ---------------------------------------------------------------------------
+
 type RemoveCheck struct {
 	Branch          string
 	MergedPath      string
@@ -41,288 +242,38 @@ type RemoveCheck struct {
 	UntrackedTotal  int      // true count of untracked non-ignored files
 }
 
-// IsClean reports whether the orktree has no uncommitted work worth preserving.
+// reports whether the orktree has no uncommitted work worth preserving.
 // Ignored files (cache/build artifacts) are not considered.
 func (c *RemoveCheck) IsClean() bool {
 	return len(c.Dependents) == 0 && c.TrackedTotal == 0 && c.UntrackedTotal == 0 && c.UnmergedTotal == 0
 }
 
-// HasBlockers reports whether removal should be refused regardless of user confirmation.
+// reports whether removal should be refused regardless of user confirmation.
 // Currently this is true only when other orktrees depend on this one as a base layer.
 func (c *RemoveCheck) HasBlockers() bool {
 	return len(c.Dependents) > 0
 }
 
-// OrktreeInfo is a read-only snapshot of an orktree's metadata and status.
-type OrktreeInfo struct {
-	ID                 string
-	Branch             string
-	MergedPath         string
-	Mounted            bool
-	LowerOrktreeBranch string
-	CreatedAt          time.Time
-	UpperDirSize       int64 // bytes consumed in the CoW upper dir; -1 if unknown
-}
-
-// CreateOpts controls orktree creation behaviour.
-type CreateOpts struct {
-	From  string // base branch, git ref, or existing orktree
-	NoGit bool   // skip git worktree registration (overlay-only)
-}
-
-// Prereq describes a single prerequisite check result.
-type Prereq struct {
-	Name string
-	Fix  string
-	OK   bool
-}
-
-// ---------------------------------------------------------------------------
-// Construction / discovery
-// ---------------------------------------------------------------------------
-
-// Init initialises orktree for sourceRoot: creates the sibling data directory
-// and state.json, then returns a Manager. Idempotent — if state already
-// exists it is loaded without modification.
-func Init(sourceRoot string) (*Manager, error) {
-	abs, err := filepath.Abs(sourceRoot)
-	if err != nil {
-		return nil, err
-	}
-	if cfg, loadErr := state.Load(abs); loadErr == nil {
-		return &Manager{cfg: cfg}, nil
-	}
-	isGit := igit.IsGitRepo(abs)
-	cfg, err := state.Init(abs, isGit)
-	if err != nil {
-		return nil, err
-	}
-	return &Manager{cfg: cfg}, nil
-}
-
-// NewManager loads existing orktree state for sourceRoot.
-// Returns an error if orktree has not been initialised.
-func NewManager(sourceRoot string) (*Manager, error) {
-	abs, err := filepath.Abs(sourceRoot)
-	if err != nil {
-		return nil, err
-	}
-	cfg, err := state.Load(abs)
-	if err != nil {
-		return nil, err
-	}
-	return &Manager{cfg: cfg}, nil
-}
-
-// Discover walks up from startDir to locate an initialised orktree,
-// handling both source-root and merged-view working directories.
-func Discover(startDir string) (*Manager, error) {
-	abs, err := filepath.Abs(startDir)
-	if err != nil {
-		return nil, err
-	}
-	dir := abs
-	for {
-		// Case 1: dir is the source root — look for sibling .orktree/state.json
-		sib := filepath.Join(filepath.Dir(dir), filepath.Base(dir)+".orktree")
-		if _, err := os.Stat(filepath.Join(sib, state.StateFile)); err == nil {
-			cfg, err := state.Load(dir)
-			if err != nil {
-				return nil, err
-			}
-			return &Manager{cfg: cfg}, nil
-		}
-		// Case 2: dir is inside a merged view — the .orktree suffix reveals the source root
-		base := filepath.Base(dir)
-		if strings.HasSuffix(base, ".orktree") {
-			if _, err := os.Stat(filepath.Join(dir, state.StateFile)); err == nil {
-				srcRoot := filepath.Join(filepath.Dir(dir), strings.TrimSuffix(base, ".orktree"))
-				cfg, err := state.Load(srcRoot)
-				if err != nil {
-					return nil, err
-				}
-				return &Manager{cfg: cfg}, nil
-			}
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return nil, fmt.Errorf("no orktree workspace found in %s or any parent directory", abs)
-}
-
-// CheckPrerequisites reports whether fuse-overlayfs, /dev/fuse, and git
-// are available. Each entry contains a human-readable fix command when the
-// prerequisite is not satisfied.
-func CheckPrerequisites() []Prereq {
-	_, fuseOfsErr := exec.LookPath("fuse-overlayfs")
-	_, gitErr := exec.LookPath("git")
-	return []Prereq{
-		{
-			Name: "fuse-overlayfs",
-			Fix:  "sudo apt-get install fuse-overlayfs   # or: dnf / pacman / brew equivalent",
-			OK:   fuseOfsErr == nil,
-		},
-		{
-			Name: "fuse group (/dev/fuse)",
-			Fix:  "sudo usermod -aG fuse $USER",
-			OK:   canAccessFuseDev(),
-		},
-		{
-			Name: "git",
-			Fix:  "install git: https://git-scm.com/downloads",
-			OK:   gitErr == nil,
-		},
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Accessors
-// ---------------------------------------------------------------------------
-
-// SourceRoot returns the absolute path of the source repository root.
-func (m *Manager) SourceRoot() string {
-	return m.cfg.SourceRoot
-}
-
-// IsGitRepo reports whether the managed source root is a git repository.
-func (m *Manager) IsGitRepo() bool {
-	return m.cfg.IsGitRepo
-}
-
-// ---------------------------------------------------------------------------
-// Operations
-// ---------------------------------------------------------------------------
-
-// validateBranch rejects branch names that would escape the orktree directory
-// or are otherwise invalid for use as filesystem paths.
-func validateBranch(branch string) error {
-	if branch == "" {
-		return fmt.Errorf("branch name must not be empty")
-	}
-	if strings.ContainsRune(branch, 0) {
-		return fmt.Errorf("branch name contains invalid characters")
-	}
-	cleaned := filepath.Clean(branch)
-	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
-		return fmt.Errorf("branch name %q would escape the orktree directory", branch)
-	}
-	return nil
-}
-
-// Create creates a new orktree for branch: adds a state entry, sets up git
-// (unless NoGit), and mounts the overlay. Returns info for the newly created
-// orktree.
-func (m *Manager) Create(branch string, opts CreateOpts) (OrktreeInfo, error) {
-	if err := validateBranch(branch); err != nil {
-		return OrktreeInfo{}, err
-	}
-	if _, err := state.FindOrktree(m.cfg, branch); err == nil {
-		return OrktreeInfo{}, fmt.Errorf("orktree %q already exists", branch)
-	}
-
-	w, err := state.NewOrktree(m.cfg, branch)
-	if err != nil {
-		return OrktreeInfo{}, err
-	}
-
-	upper, work, merged := m.cfg.OverlayDirs(w)
-
-	var lowerDir string
-	if m.cfg.IsGitRepo && !opts.NoGit {
-		lowerDir, err = m.setupGitForOrktree(&w, branch, opts.From, upper)
-		if err != nil {
-			state.RemoveOrktree(m.cfg, w.ID) //nolint:errcheck
-			return OrktreeInfo{}, err
-		}
-		if err := state.UpdateOrktree(m.cfg, w); err != nil {
-			return OrktreeInfo{}, err
-		}
-	} else {
-		lowerDir = m.cfg.SourceRoot
-	}
-
-	if err := overlay.Create(upper, work, merged); err != nil {
-		state.RemoveOrktree(m.cfg, w.ID) //nolint:errcheck
-		return OrktreeInfo{}, err
-	}
-	if err := overlay.Mount(lowerDir, upper, work, merged); err != nil {
-		state.RemoveOrktree(m.cfg, w.ID) //nolint:errcheck
-		return OrktreeInfo{}, err
-	}
-
-	return m.orktreeInfo(w)
-}
-
-// EnsureReady finds or creates the orktree for branch and ensures it
-// (and any ancestor overlays) are mounted. This is the method that the
-// switch and path commands use.
-func (m *Manager) EnsureReady(branch string, opts CreateOpts) (OrktreeInfo, error) {
-	w, err := state.FindOrktree(m.cfg, branch)
-	if err != nil {
-		return m.Create(branch, opts)
-	}
-	if opts.From != "" || opts.NoGit {
-		return OrktreeInfo{}, fmt.Errorf("orktree %q already exists; --from and --no-git are only used during creation", branch)
-	}
-	if err := m.ensureMountedWithAncestors(w, make(map[string]bool)); err != nil {
-		return OrktreeInfo{}, err
-	}
-	return m.orktreeInfo(w)
-}
-
-// List returns info for every orktree, including mount status and upper
-// directory size.
-func (m *Manager) List() ([]OrktreeInfo, error) {
-	infos := make([]OrktreeInfo, 0, len(m.cfg.Orktrees))
-	for _, w := range m.cfg.Orktrees {
-		info, err := m.orktreeInfo(w)
-		if err != nil {
-			return nil, err
-		}
-		infos = append(infos, info)
-	}
-	return infos, nil
-}
-
-// UpperDirFiles returns paths of files in the overlay upper directory that
-// genuinely differ from the lower layer. Files copied up by the overlay but
-// reverted to identical content are excluded. Returns at most limit paths and
-// the total count of dirty files (which may exceed len(files) when truncated).
-func (m *Manager) UpperDirFiles(ref string, limit int) ([]string, int, error) {
-	w, err := state.FindOrktree(m.cfg, ref)
-	if err != nil {
-		return nil, 0, err
-	}
-	upper, _, _ := m.cfg.OverlayDirs(w)
-
-	return overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), limit)
-}
-
-// CheckRemove performs a read-only assessment of what would be lost by
-// removing the orktree identified by ref. The caller can inspect the
-// returned RemoveCheck to decide whether to proceed.
-func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
-	w, err := state.FindOrktree(m.cfg, ref)
+// Read-only, does not modify
+func (i *Index) CheckRemoveOrktree(branch string) (*RemoveCheck, error) {
+	w, err := state.FindOrktree(i.state, branch)
 	if err != nil {
 		return nil, err
 	}
 
-	upper, _, merged := m.cfg.OverlayDirs(w)
+	upper, _, merged := i.state.OverlayDirs(w)
 	rc := &RemoveCheck{
 		Branch:     w.Branch,
 		MergedPath: merged,
 	}
 
 	// Dependents.
-	for _, d := range state.Dependents(m.cfg, w.Branch) {
+	for _, d := range state.Dependents(i.state, w.Branch) {
 		rc.Dependents = append(rc.Dependents, d.Branch)
 	}
 
 	// Dirty files in the overlay upper dir.
-	dirtyFiles, _, err := overlay.DirtyUpperFiles(upper, m.cfg.MountPath(w), 0)
+	dirtyFiles, _, err := overlay.DirtyUpperFiles(upper, i.state.MountPath(w), 0)
 	if err != nil {
 		return nil, fmt.Errorf("assessing overlay changes: %w", err)
 	}
@@ -330,19 +281,20 @@ func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
 	if w.GitTreePath != "" {
 		// Classify dirty files using git ignore rules.
 		ignoredSet := make(map[string]bool)
+
 		if len(dirtyFiles) > 0 {
 			// Intentionally discarding error: if check-ignore fails we skip
 			// classification and treat all files as non-ignored, producing
 			// conservative over-warning rather than silent suppression.
-			ignored, _ := igit.CheckIgnored(m.cfg.SourceRoot, dirtyFiles)
+			ignored, _ := git.CheckIgnored(i.state.SourceRoot, dirtyFiles)
 			for _, p := range ignored {
 				ignoredSet[p] = true
 			}
 		}
 
-		lowerDir := m.cfg.MountPath(w)
+		lowerDir := i.state.MountPath(w)
 		for _, f := range dirtyFiles {
-			if IsOverlayWhiteout(f) {
+			if overlay.IsOverlayWhiteout(f) {
 				continue
 			}
 			if ignoredSet[f] {
@@ -362,19 +314,17 @@ func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
 			}
 		}
 
-		// Unmerged commits.
-		commits, _ := igit.UnmergedCommits(m.cfg.SourceRoot, w.Branch, 10)
+		commits, _ := git.UnmergedCommits(i.state.SourceRoot, w.Branch, 10)
 		rc.UnmergedCommits = commits
-		if total, err := igit.UnmergedCommitCount(m.cfg.SourceRoot, w.Branch); err == nil {
+		if total, err := git.UnmergedCommitCount(i.state.SourceRoot, w.Branch); err == nil {
 			rc.UnmergedTotal = total
 		} else {
 			rc.UnmergedTotal = len(commits)
 		}
-	} else {
-		// NoGit mode: treat all dirty files as untracked, skipping whiteouts.
+	} else { // NoGit mode: treat all dirty files as untracked, skipping whiteouts.
 		var filtered []string
 		for _, f := range dirtyFiles {
-			if !IsOverlayWhiteout(f) {
+			if !overlay.IsOverlayWhiteout(f) {
 				filtered = append(filtered, f)
 			}
 		}
@@ -389,104 +339,119 @@ func (m *Manager) CheckRemove(ref string) (*RemoveCheck, error) {
 	return rc, nil
 }
 
-// Remove unmounts the overlay, deregisters the git worktree, and deletes
+// Unmounts the overlay, deregisters the git worktree, and deletes
 // the orktree state entry unconditionally.
-func (m *Manager) Remove(ref string) error {
-	w, err := state.FindOrktree(m.cfg, ref)
+func (i *Index) RemoveOrktree(ref string) error {
+	w, err := state.FindOrktree(i.state, ref)
 	if err != nil {
 		return err
 	}
 
-	upper, work, merged := m.cfg.OverlayDirs(w)
+	upper, work, merged := i.state.OverlayDirs(w)
 
 	if err := overlay.Remove(upper, work, merged); err != nil {
 		return fmt.Errorf("removing overlay: %w", err)
 	}
 
-	cleanEmptyAncestors(merged, state.SiblingDir(m.cfg.SourceRoot))
+	cleanEmptyAncestors(merged, state.SiblingDir(i.state.SourceRoot))
 
 	if w.GitTreePath != "" {
-		if err := igit.RemoveWorktree(m.cfg.SourceRoot, w.GitTreePath); err != nil {
+		if err := git.RemoveWorktree(i.state.SourceRoot, w.GitTreePath); err != nil {
 			return fmt.Errorf("removing git worktree: %w", err)
 		}
-		igit.PruneWorktrees(m.cfg.SourceRoot) //nolint:errcheck
+		git.PruneWorktrees(i.state.SourceRoot) //nolint:errcheck
 	}
 
-	return state.RemoveOrktree(m.cfg, w.ID)
+	return state.RemoveOrktree(i.state, w.ID)
 }
 
-// Path returns the merged overlay path for an existing orktree.
-func (m *Manager) Path(ref string) (string, error) {
-	w, err := state.FindOrktree(m.cfg, ref)
+// ---------------------------------------------------------------------------
+// Resolve path
+// ---------------------------------------------------------------------------
+
+func (i *Index) ResolveOrktreePath(ref string) (string, error) {
+	w, err := state.FindOrktree(i.state, ref)
 	if err != nil {
 		return "", err
 	}
-	_, _, merged := m.cfg.OverlayDirs(w)
+	_, _, merged := i.state.OverlayDirs(w)
 	return merged, nil
 }
 
-// Find returns info for the orktree matching ref (by ID, branch name,
-// or unique prefix).
-func (m *Manager) Find(ref string) (OrktreeInfo, error) {
-	w, err := state.FindOrktree(m.cfg, ref)
+// ---------------------------------------------------------------------------
+// Find
+// ---------------------------------------------------------------------------
+
+func (i *Index) FindOrktree(ref string) (OrktreeMetadata, error) {
+	w, err := state.FindOrktree(i.state, ref)
 	if err != nil {
-		return OrktreeInfo{}, err
+		return OrktreeMetadata{}, err
 	}
-	return m.orktreeInfo(w)
+	return i.createOrktreeInfo(w)
 }
 
 // ---------------------------------------------------------------------------
-// Private helpers
+// helpers
 // ---------------------------------------------------------------------------
 
-func (m *Manager) ensureMountedWithAncestors(w state.Orktree, visited map[string]bool) error {
+func validateBranchName(name string) error {
+	if name == "" {
+		return fmt.Errorf("branch name must not be empty")
+	}
+	if strings.ContainsRune(name, 0) {
+		return fmt.Errorf("branch name contains invalid characters")
+	}
+	cleaned := filepath.Clean(name)
+	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
+		return fmt.Errorf("branch name %q would escape the orktree directory", name)
+	}
+	return nil
+}
+
+func (i *Index) ensureMountedWithAncestors(w state.Orktree, visited map[string]bool) error {
 	if visited[w.ID] {
 		return fmt.Errorf("cycle detected in orktree parent chain at %q", w.Branch)
 	}
 	visited[w.ID] = true
 
 	if w.LowerOrktreeBranch != "" {
-		parent, err := state.FindOrktree(m.cfg, w.LowerOrktreeBranch)
+		parent, err := state.FindOrktree(i.state, w.LowerOrktreeBranch)
 		if err != nil {
 			return err
 		}
-		if err := m.ensureMountedWithAncestors(parent, visited); err != nil {
+		if err := i.ensureMountedWithAncestors(parent, visited); err != nil {
 			return err
 		}
 	}
 
-	upper, work, merged := m.cfg.OverlayDirs(w)
-	return overlay.EnsureMounted(m.cfg.MountPath(w), upper, work, merged)
+	upper, work, merged := i.state.OverlayDirs(w)
+	return overlay.EnsureMounted(i.state.MountPath(w), upper, work, merged)
 }
 
-// setupGitForOrktree decides which git setup path to take and returns the
-// overlayfs lowerdir. It populates the git-related fields of *w.
-//
-// Zero-cost paths skip a full checkout by reusing an existing filesystem as
-// lowerdir and seeding only a .git gitfile into the overlay upper dir.
-func (m *Manager) setupGitForOrktree(w *state.Orktree, branch, from, upper string) (string, error) {
-	treeDir := m.cfg.GitTreeDir(*w)
+// Returns the overlayfs lowerdir. Populates the git-related fields of *w.
+func (i *Index) setupGitForOrktree(w *state.Orktree, branch, from, upper string) (string, error) {
+	treeDir := i.state.GitTreeDir(*w)
 
-	// ---- Zero-cost path A: --from refers to an existing orktree ---------
+	// --from refers to an existing orktree
 	if from != "" {
-		fromOrk, err := state.FindOrktree(m.cfg, from)
+		fromOrk, err := state.FindOrktree(i.state, from)
 		if err == nil {
-			_, _, fromMerged := m.cfg.OverlayDirs(fromOrk)
+			_, _, fromMerged := i.state.OverlayDirs(fromOrk)
 			mounted, _ := overlay.IsMounted(fromMerged)
 			if !mounted {
 				return "", fmt.Errorf("orktree %q is not mounted; mount it first", from)
 			}
 
-			exists, err := igit.BranchExists(m.cfg.SourceRoot, branch)
+			exists, err := git.BranchExists(i.state.SourceRoot, branch)
 			if err != nil {
 				return "", err
 			}
 			if !exists {
-				if err := igit.CreateBranch(m.cfg.SourceRoot, branch, fromOrk.Branch); err != nil {
+				if err := git.CreateBranch(i.state.SourceRoot, branch, fromOrk.Branch); err != nil {
 					return "", fmt.Errorf("creating branch: %w", err)
 				}
 			}
-			if err := igit.AddWorktreeNoCheckout(m.cfg.SourceRoot, treeDir, branch); err != nil {
+			if err := git.AddWorktreeNoCheckout(i.state.SourceRoot, treeDir, branch); err != nil {
 				return "", fmt.Errorf("registering git worktree: %w", err)
 			}
 			if err := seedGitFile(treeDir, upper); err != nil {
@@ -499,36 +464,36 @@ func (m *Manager) setupGitForOrktree(w *state.Orktree, branch, from, upper strin
 		}
 	}
 
-	// ---- Zero-cost path B: no --from, or --from matches source root -----
-	currentBranch, _ := igit.CurrentBranch(m.cfg.SourceRoot)
+	// --from matches source root
+	currentBranch, _ := git.CurrentBranch(i.state.SourceRoot)
 	if from == "" || from == currentBranch {
-		exists, err := igit.BranchExists(m.cfg.SourceRoot, branch)
+		exists, err := git.BranchExists(i.state.SourceRoot, branch)
 		if err != nil {
 			return "", err
 		}
 		if !exists {
-			if err := igit.CreateBranch(m.cfg.SourceRoot, branch, from); err != nil {
+			if err := git.CreateBranch(i.state.SourceRoot, branch, from); err != nil {
 				return "", fmt.Errorf("creating branch: %w", err)
 			}
 		}
-		if err := igit.AddWorktreeNoCheckout(m.cfg.SourceRoot, treeDir, branch); err != nil {
+		if err := git.AddWorktreeNoCheckout(i.state.SourceRoot, treeDir, branch); err != nil {
 			return "", fmt.Errorf("registering git worktree: %w", err)
 		}
 		if err := seedGitFile(treeDir, upper); err != nil {
 			return "", err
 		}
 		w.GitTreePath = treeDir
-		w.LowerDir = m.cfg.SourceRoot
-		return m.cfg.SourceRoot, nil
+		w.LowerDir = i.state.SourceRoot
+		return i.state.SourceRoot, nil
 	}
 
-	// ---- Conventional path: --from <git-ref> not matching any orktree ---
-	exists, err := igit.BranchExists(m.cfg.SourceRoot, branch)
+	// fallback: --from <git-ref> could not be matched to an existing fs
+	exists, err := git.BranchExists(i.state.SourceRoot, branch)
 	if err != nil {
 		return "", err
 	}
 	newBranch := !exists
-	if err := igit.AddWorktree(m.cfg.SourceRoot, treeDir, branch, newBranch, from); err != nil {
+	if err := git.AddWorktree(i.state.SourceRoot, treeDir, branch, newBranch, from); err != nil {
 		return "", fmt.Errorf("creating git worktree: %w", err)
 	}
 	w.GitTreePath = treeDir
@@ -536,8 +501,8 @@ func (m *Manager) setupGitForOrktree(w *state.Orktree, branch, from, upper strin
 	return treeDir, nil
 }
 
-// seedGitFile copies the .git gitfile from the no-checkout worktree directory
-// into upper/ so that git commands inside the merged overlay path track the
+// Copies the .git gitfile from the no-checkout worktree directory
+// into upper. this ensures git commands inside the merged overlay path track the
 // correct branch rather than the lowerdir's branch.
 func seedGitFile(treeDir, upper string) error {
 	gitFileData, err := os.ReadFile(filepath.Join(treeDir, ".git"))
@@ -553,8 +518,7 @@ func seedGitFile(treeDir, upper string) error {
 	return nil
 }
 
-// cleanEmptyAncestors removes empty directories from path up to (but not
-// including) stopAt.
+// Removes empty directories from path up to (but not including) stopAt.
 func cleanEmptyAncestors(path, stopAt string) {
 	for {
 		parent := filepath.Dir(path)
@@ -568,7 +532,6 @@ func cleanEmptyAncestors(path, stopAt string) {
 	}
 }
 
-// canAccessFuseDev reports whether /dev/fuse is accessible to the current process.
 func canAccessFuseDev() bool {
 	f, err := os.Open("/dev/fuse")
 	if err != nil {
@@ -578,24 +541,24 @@ func canAccessFuseDev() bool {
 	return true
 }
 
-func (m *Manager) orktreeInfo(w state.Orktree) (OrktreeInfo, error) {
-	upper, _, merged := m.cfg.OverlayDirs(w)
+func (i *Index) createOrktreeInfo(w state.Orktree) (OrktreeMetadata, error) {
+	upper, _, merged := i.state.OverlayDirs(w)
 	mounted, err := overlay.IsMounted(merged)
 	if err != nil {
-		return OrktreeInfo{}, fmt.Errorf("checking mount status: %w", err)
+		return OrktreeMetadata{}, fmt.Errorf("checking mount status: %w", err)
 	}
-	return OrktreeInfo{
+	return OrktreeMetadata{
 		ID:                 w.ID,
 		Branch:             w.Branch,
 		MergedPath:         merged,
 		Mounted:            mounted,
 		LowerOrktreeBranch: w.LowerOrktreeBranch,
 		CreatedAt:          w.CreatedAt,
-		UpperDirSize:       dirSize(upper),
+		UpperDirSize:       calculateDirectoryTotalBytes(upper),
 	}, nil
 }
 
-func dirSize(path string) int64 {
+func calculateDirectoryTotalBytes(path string) int64 {
 	var size int64
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {

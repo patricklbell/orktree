@@ -40,18 +40,8 @@ no files are duplicated.
   changes, unmerged commits, or dependent orktrees. Use **--force** to
   bypass safety checks.
 
-**shell-init** [**--shell** *bash*|*zsh*]
-: Print shell integration snippet (eval in .bashrc/.zshrc).
-
-# SHELL INTEGRATION
-
-Add to your shell startup file:
-
-    eval "$(orktree shell-init)"
-
-This enables **cd-on-switch** and **tab completion**. When shell integration
-is active, `orktree switch <branch>` changes your working directory to the
-orktree workspace.
+**doctor**
+: Check prerequisites and diagnose issues.
 
 # ZERO-COST ORKTREES
 
@@ -69,6 +59,8 @@ base:
     orktree switch hotfix --from v1.2.3
 
 # PREREQUISITES
+
+Run `orktree doctor` to check prerequisites.
 
 - **fuse-overlayfs** — rootless copy-on-write overlay filesystem
 - **fuse group** — /dev/fuse access

@@ -17,15 +17,18 @@ unchanged.
 
 ## Quick setup
 
-The fastest way to enable cd-on-switch is to add one line to your shell rc file:
+Source the completion script shipped with orktree — it includes both the shell
+wrapper and tab completions:
 
 ```bash
-eval "$(orktree shell-init)"   # works for bash and zsh
+# Bash (~/.bashrc)
+source /path/to/completions/orktree.bash
+
+# Zsh — copy to a directory in $fpath:
+cp completions/orktree.zsh /usr/local/share/zsh/site-functions/_orktree
 ```
 
-Alternatively, install the completion scripts shipped with orktree
-(`completions/orktree.bash` or `completions/orktree.zsh`) — they already include
-the wrapper function alongside tab completions.
+If you installed via `make install` or a package, completions are already in place.
 
 ---
 

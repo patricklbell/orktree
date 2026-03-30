@@ -12,15 +12,12 @@ import (
 
 const StateFile = "state.json"
 
-// Config is the top-level metadata stored in <repo>.orktree/state.json.
-type Config struct {
+type State struct {
 	SourceRoot string    `json:"source_root"`
 	IsGitRepo  bool      `json:"is_git_repo"`
 	Orktrees   []Orktree `json:"orktrees"`
 }
 
-// Orktree holds per-orktree metadata.
-// An orktree is a git worktree registration paired with a fuse-overlayfs CoW mount.
 type Orktree struct {
 	// ID is a short random hex identifier.
 	ID string `json:"id"`
@@ -40,24 +37,24 @@ type Orktree struct {
 	CreatedAt          time.Time `json:"created_at"`
 }
 
-// SiblingDir returns the path to the orktree data directory that sits next to
+// Path to the orktree data directory that sits next to
 // sourceRoot: /path/to/myrepo → /path/to/myrepo.orktree
 func SiblingDir(sourceRoot string) string {
 	return filepath.Join(filepath.Dir(sourceRoot), filepath.Base(sourceRoot)+".orktree")
 }
 
-// StatePath returns the path to the state file in the sibling dir for sourceRoot.
+// Path to the state file in the sibling dir for sourceRoot.
 func StatePath(sourceRoot string) string {
 	return filepath.Join(SiblingDir(sourceRoot), StateFile)
 }
 
 // Load reads the state file from the given source root.
-func Load(sourceRoot string) (*Config, error) {
+func Load(sourceRoot string) (*State, error) {
 	data, err := os.ReadFile(StatePath(sourceRoot))
 	if err != nil {
 		return nil, fmt.Errorf("reading state: %w", err)
 	}
-	var cfg Config
+	var cfg State
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing state: %w", err)
 	}
@@ -65,7 +62,7 @@ func Load(sourceRoot string) (*Config, error) {
 }
 
 // Save writes the state back to disk (atomic: write to temp then rename).
-func Save(cfg *Config) error {
+func Save(cfg *State) error {
 	path := StatePath(cfg.SourceRoot)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -96,7 +93,7 @@ func Save(cfg *Config) error {
 // Init creates a new Config for the given source root.
 // It creates a sibling directory (<repo>.orktree/) next to the source root and
 // writes a .gitignore there to prevent any parent git repo from tracking its contents.
-func Init(sourceRoot string, isGitRepo bool) (*Config, error) {
+func Init(sourceRoot string, isGitRepo bool) (*State, error) {
 	abs, err := filepath.Abs(sourceRoot)
 	if err != nil {
 		return nil, err
@@ -120,7 +117,7 @@ func Init(sourceRoot string, isGitRepo bool) (*Config, error) {
 		return nil, fmt.Errorf("writing .gitignore: %w", err)
 	}
 
-	cfg := &Config{
+	cfg := &State{
 		SourceRoot: abs,
 		IsGitRepo:  isGitRepo,
 		Orktrees:   []Orktree{},
@@ -132,8 +129,8 @@ func Init(sourceRoot string, isGitRepo bool) (*Config, error) {
 	return cfg, nil
 }
 
-// NewOrktree adds an orktree entry to cfg and saves state.
-func NewOrktree(cfg *Config, branch string) (Orktree, error) {
+// Adds an orktree entry to cfg and saves state.
+func NewOrktree(cfg *State, branch string) (Orktree, error) {
 	w := Orktree{
 		ID:        newID(),
 		Branch:    branch,
@@ -143,8 +140,8 @@ func NewOrktree(cfg *Config, branch string) (Orktree, error) {
 	return w, Save(cfg)
 }
 
-// UpdateOrktree replaces the orktree entry with matching ID and saves.
-func UpdateOrktree(cfg *Config, w Orktree) error {
+// Replaces the orktree entry with matching ID and saves.
+func UpdateOrktree(cfg *State, w Orktree) error {
 	for i, existing := range cfg.Orktrees {
 		if existing.ID == w.ID {
 			cfg.Orktrees[i] = w
@@ -154,8 +151,8 @@ func UpdateOrktree(cfg *Config, w Orktree) error {
 	return fmt.Errorf("orktree %q not found", w.ID)
 }
 
-// RemoveOrktree removes the orktree entry with the given ID and saves.
-func RemoveOrktree(cfg *Config, id string) error {
+// Removes the orktree entry with the given ID and saves.
+func RemoveOrktree(cfg *State, id string) error {
 	for i, w := range cfg.Orktrees {
 		if w.ID == id {
 			cfg.Orktrees = append(cfg.Orktrees[:i], cfg.Orktrees[i+1:]...)
@@ -165,9 +162,9 @@ func RemoveOrktree(cfg *Config, id string) error {
 	return fmt.Errorf("orktree %q not found", id)
 }
 
-// Dependents returns all orktrees whose LowerOrktreeBranch matches branch,
+// Orktrees whose LowerOrktreeBranch matches branch,
 // i.e. orktrees that directly depend on the given branch as their overlay base.
-func Dependents(cfg *Config, branch string) []Orktree {
+func Dependents(cfg *State, branch string) []Orktree {
 	var deps []Orktree
 	for _, w := range cfg.Orktrees {
 		if w.LowerOrktreeBranch == branch {
@@ -177,8 +174,8 @@ func Dependents(cfg *Config, branch string) []Orktree {
 	return deps
 }
 
-// FindOrktree returns the orktree matching ref by ID, branch name, or prefix.
-func FindOrktree(cfg *Config, ref string) (Orktree, error) {
+// Orktree matching ref by ID, branch name, or prefix.
+func FindOrktree(cfg *State, ref string) (Orktree, error) {
 	// Exact ID match.
 	for _, w := range cfg.Orktrees {
 		if w.ID == ref {
@@ -214,16 +211,16 @@ func FindOrktree(cfg *Config, ref string) (Orktree, error) {
 	return Orktree{}, fmt.Errorf("ambiguous orktree reference %q (matches multiple)", ref)
 }
 
-// GitTreeDir returns the path where the registered git worktree directory for w
+// Path where the registered git worktree directory for w
 // is stored.  For zero-cost orktrees this directory contains only a .git gitfile
 // (no checkout); for conventional orktrees it is the full checkout used as lowerdir.
-func (c *Config) GitTreeDir(w Orktree) string {
+func (c *State) GitTreeDir(w Orktree) string {
 	return filepath.Join(SiblingDir(c.SourceRoot), ".overlayfs", w.ID, "tree")
 }
 
-// OverlayDirs returns the upper, work, and merged directory paths for w.
+// Upper, work, and merged directory paths for w.
 // Branches containing "/" (e.g. "feature/my-branch") produce nested merged paths.
-func (c *Config) OverlayDirs(w Orktree) (upper, work, merged string) {
+func (c *State) OverlayDirs(w Orktree) (upper, work, merged string) {
 	sib := SiblingDir(c.SourceRoot)
 	hidden := filepath.Join(sib, ".overlayfs", w.ID)
 	// filepath.FromSlash translates branches like "feature/my-branch" into
@@ -232,10 +229,10 @@ func (c *Config) OverlayDirs(w Orktree) (upper, work, merged string) {
 	return filepath.Join(hidden, "upper"), filepath.Join(hidden, "work"), merged
 }
 
-// MountPath returns the overlayfs lowerdir for w.
+// Overlayfs lowerdir for w.
 // When LowerDir is explicitly stored it is returned directly;
 // otherwise falls back to GitTreePath then the source root.
-func (c *Config) MountPath(w Orktree) string {
+func (c *State) MountPath(w Orktree) string {
 	if w.LowerDir != "" {
 		return w.LowerDir
 	}
@@ -245,7 +242,7 @@ func (c *Config) MountPath(w Orktree) string {
 	return c.SourceRoot
 }
 
-// newID returns a random 6-character hex id.
+// Random 6-character hex id.
 func newID() string {
 	b := make([]byte, 3)
 	rand.Read(b) //nolint:gosec // ids need not be cryptographically random

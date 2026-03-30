@@ -66,9 +66,6 @@ base.
   orktree immediately. Does **not** override the dependents check —
   orktrees with dependents are always refused.
 
-**--help**, **-h**
-: Print usage information.
-
 # EXAMPLES
 
 Remove a clean orktree (no prompt):

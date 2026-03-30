@@ -29,9 +29,6 @@ has been consumed by files modified within each orktree.
 : Print one branch name per line with no header or decoration. Suitable for
   scripting and shell completion.
 
-**--help**, **-h**
-: Print usage information.
-
 # EXAMPLES
 
 List all orktrees:

@@ -40,9 +40,6 @@ also changes the working directory to the orktree workspace.
 **--no-git**
 : Skip git worktree setup. The orktree will not be associated with a git branch.
 
-**--help**, **-h**
-: Print usage information.
-
 # EXAMPLES
 
 Create and enter an orktree from the source root (zero-cost):

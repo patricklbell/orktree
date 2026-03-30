@@ -20,6 +20,6 @@ contents:
     dst: /usr/share/bash-completion/completions/orktree
   - src: completions/orktree.zsh
     dst: /usr/share/zsh/site-functions/_orktree
-  - src: man/man1/
+  - src: build/man/man1/
     dst: /usr/share/man/man1/
     type: tree

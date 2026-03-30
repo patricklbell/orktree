@@ -38,9 +38,6 @@ This command is used internally by shell integration.
 **--no-git**
 : Skip git worktree setup when auto-creating.
 
-**--help**, **-h**
-: Print usage information.
-
 # EXAMPLES
 
 Print the workspace path:

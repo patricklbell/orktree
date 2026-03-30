@@ -1,4 +1,3 @@
-// Package git provides helpers for git worktree operations used by orktree.
 package git
 
 import (
@@ -9,14 +8,12 @@ import (
 	"strings"
 )
 
-// IsGitRepo returns true if the given path is inside a git repository.
 func IsGitRepo(path string) bool {
 	cmd := exec.Command("git", "-C", path, "rev-parse", "--git-dir")
 	cmd.Stderr = nil
 	return cmd.Run() == nil
 }
 
-// CurrentBranch returns the name of the currently checked-out branch.
 func CurrentBranch(repoRoot string) (string, error) {
 	out, err := exec.Command("git", "-C", repoRoot, "symbolic-ref", "--short", "HEAD").Output()
 	if err != nil {
@@ -29,7 +26,6 @@ func CurrentBranch(repoRoot string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// BranchExists reports whether a local branch with the given name exists.
 func BranchExists(repoRoot, branch string) (bool, error) {
 	err := exec.Command("git", "-C", repoRoot, "show-ref", "--verify", "--quiet",
 		"refs/heads/"+branch).Run()
@@ -43,11 +39,6 @@ func BranchExists(repoRoot, branch string) (bool, error) {
 	return false, fmt.Errorf("checking branch %q: %w", branch, err)
 }
 
-// AddWorktree creates a git worktree at worktreePath on branch.
-//
-//   - If newBranch is true a new branch is created from from (or HEAD when from
-//     is empty).
-//   - If newBranch is false the branch must already exist.
 func AddWorktree(repoRoot, worktreePath, branch string, newBranch bool, from string) error {
 	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
 		return fmt.Errorf("creating worktree path %s: %w", worktreePath, err)
@@ -72,7 +63,6 @@ func AddWorktree(repoRoot, worktreePath, branch string, newBranch bool, from str
 	return nil
 }
 
-// RemoveWorktree removes the git worktree rooted at worktreePath.
 func RemoveWorktree(repoRoot, worktreePath string) error {
 	cmd := exec.Command("git", "-C", repoRoot, "worktree", "remove", "--force", worktreePath)
 	var errBuf bytes.Buffer
@@ -83,7 +73,6 @@ func RemoveWorktree(repoRoot, worktreePath string) error {
 	return nil
 }
 
-// PruneWorktrees runs `git worktree prune` to clean up stale entries.
 func PruneWorktrees(repoRoot string) error {
 	cmd := exec.Command("git", "-C", repoRoot, "worktree", "prune")
 	var errBuf bytes.Buffer
@@ -94,8 +83,6 @@ func PruneWorktrees(repoRoot string) error {
 	return nil
 }
 
-// CreateBranch creates a new local branch in repoRoot.
-// If from is non-empty the branch is created from that ref; otherwise HEAD is used.
 func CreateBranch(repoRoot, branch, from string) error {
 	args := []string{"-C", repoRoot, "branch", branch}
 	if from != "" {
@@ -110,9 +97,6 @@ func CreateBranch(repoRoot, branch, from string) error {
 	return nil
 }
 
-// UnmergedCommits returns a list of short commit descriptions on branch that
-// are not reachable from any other local branch. Returns nil if all commits
-// are merged. At most limit entries are returned.
 func UnmergedCommits(repoRoot, branch string, limit int) ([]string, error) {
 	args := []string{
 		"-C", repoRoot, "log",
@@ -134,10 +118,6 @@ func UnmergedCommits(repoRoot, branch string, limit int) ([]string, error) {
 	return strings.Split(text, "\n"), nil
 }
 
-// UnmergedCommitCount returns the total number of commits on branch that are
-// not reachable from any other local branch. Unlike UnmergedCommits it returns
-// only the count, avoiding the overhead of formatting and transmitting every
-// log line.
 func UnmergedCommitCount(repoRoot, branch string) (int, error) {
 	args := []string{
 		"-C", repoRoot, "rev-list", "--count",
@@ -157,8 +137,6 @@ func UnmergedCommitCount(repoRoot, branch string) (int, error) {
 	return n, nil
 }
 
-// CheckIgnored returns the subset of paths that would be ignored by .gitignore
-// rules in the given repository. Paths should be relative to the repo root.
 func CheckIgnored(repoRoot string, paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
@@ -188,14 +166,8 @@ func parseLines(s string) []string {
 	return strings.Split(s, "\n")
 }
 
-// AddWorktreeNoCheckout registers a git worktree at worktreePath for an
-// already-existing branch without checking out any files.  Only a .git gitfile
-// is written to worktreePath.  This is the zero-cost path: the actual file tree
-// is supplied via a fuse-overlayfs lowerdir rather than a fresh checkout.
-//
-// After registration, the worktree index is populated via `git read-tree HEAD`
-// so that `git status` reports no untracked files even though overlayfs makes
-// all source files visible in the working tree.
+// Populates the worktree index via `git read-tree HEAD` so that `git status`
+// reports no untracked files even though overlayfs makes all source files visible.
 func AddWorktreeNoCheckout(repoRoot, worktreePath, branch string) error {
 	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
 		return fmt.Errorf("creating worktree path %s: %w", worktreePath, err)

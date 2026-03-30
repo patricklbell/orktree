@@ -1,8 +1,3 @@
-// Package overlay manages overlayfs mounts for orktrees.
-//
-// Mounts are performed with fuse-overlayfs, a userspace implementation of
-// overlayfs that requires no elevated privileges — only /dev/fuse access,
-// which is granted by being in the fuse group (see orktree check).
 package overlay
 
 import (
@@ -17,7 +12,6 @@ import (
 	"syscall"
 )
 
-// Create creates the upper/work/merged directories for the worktree.
 func Create(upper, work, merged string) error {
 	for _, dir := range []string{upper, work, merged} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -27,9 +21,6 @@ func Create(upper, work, merged string) error {
 	return nil
 }
 
-// Mount mounts a fuse-overlayfs with the given source as lowerdir.
-// Requires fuse-overlayfs to be installed and /dev/fuse to be accessible
-// (add yourself to the fuse group — see orktree check).
 func Mount(source, upper, work, merged string) error {
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", source, upper, work)
 	cmd := exec.Command("fuse-overlayfs", "-o", opts, merged)
@@ -41,14 +32,13 @@ func Mount(source, upper, work, merged string) error {
 	return nil
 }
 
-// Unmount unmounts the merged directory.
 func Unmount(merged string) error {
 	var errBuf bytes.Buffer
 	cmd := exec.Command("fusermount", "-u", merged)
 	cmd.Stderr = &errBuf
 	if err := cmd.Run(); err != nil {
-		// Lazy unmount detaches the mount immediately; the kernel cleans up
-		// once the last reference (e.g. a shell whose cwd is inside) drops.
+		// Lazy unmount detaches immediately; kernel cleans up
+		// once the last reference (e.g. a shell cwd) drops.
 		var lazyBuf bytes.Buffer
 		lazyCmd := exec.Command("fusermount", "-uz", merged)
 		lazyCmd.Stderr = &lazyBuf
@@ -59,8 +49,6 @@ func Unmount(merged string) error {
 	return nil
 }
 
-// IsMounted returns true if merged is currently a fuse-overlayfs (or kernel
-// overlayfs) mount point.
 func IsMounted(merged string) (bool, error) {
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
@@ -79,7 +67,6 @@ func IsMounted(merged string) (bool, error) {
 	return false, nil
 }
 
-// EnsureMounted mounts the overlay if it is not already mounted.
 func EnsureMounted(source, upper, work, merged string) error {
 	ok, err := IsMounted(merged)
 	if err != nil {
@@ -91,7 +78,6 @@ func EnsureMounted(source, upper, work, merged string) error {
 	return Mount(source, upper, work, merged)
 }
 
-// Remove unmounts (if mounted) and deletes the workspace overlay directories.
 func Remove(upper, work, merged string) error {
 	mounted, err := IsMounted(merged)
 	if err != nil {
@@ -110,8 +96,12 @@ func Remove(upper, work, merged string) error {
 	return os.RemoveAll(parent)
 }
 
-// DirtyUpperFiles walks the overlayfs upper directory and returns relative
-// paths of files that genuinely differ from the corresponding file in lower.
+// Reports whether the path represents overlayfs internal metadata for file deletion or directory opacity.
+func IsOverlayWhiteout(relPath string) bool {
+	return strings.HasPrefix(filepath.Base(relPath), ".wh.")
+}
+
+// Returns relative paths of files that genuinely differ from the corresponding file in lower.
 // Files that were copied up by the overlay but reverted to identical content
 // are excluded.  Overlayfs whiteout markers (deletions) are always reported.
 // Only file content is compared; permission or mode changes alone are not detected.
@@ -174,8 +164,6 @@ func DirtyUpperFiles(upper, lower string, limit int) (files []string, total int,
 	return files, total, nil
 }
 
-// filesEqual reports whether two files have identical content.
-// Returns false if either file cannot be opened or read.
 func filesEqual(a, b string) (bool, error) {
 	infoA, err := os.Lstat(a)
 	if err != nil {

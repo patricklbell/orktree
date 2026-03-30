@@ -33,7 +33,8 @@ _orktree() {
     'p:alias for path'
     'rm:remove orktree'
     'remove:alias for rm'
-    'shell-init:print shell cd-on-switch snippet'
+    'doctor:diagnose issues'
+    'doc:alias for doctor'
     'help:show usage'
   )
 
@@ -51,30 +52,22 @@ _orktree() {
           _arguments \
             '1:branch:_orktree_branches' \
             '(-f --from)'{-f,--from}'[branch from a specific ref]:ref:_orktree_branches' \
-            '--no-git[skip git branch creation]' \
-            '--help[show help]'
+            '--no-git[skip git branch creation]'
           ;;
         path|p)
           _arguments \
             '1:branch:_orktree_branches' \
             '(-f --from)'{-f,--from}'[branch from a specific ref]:ref:_orktree_branches' \
-            '--no-git[skip git branch creation]' \
-            '--help[show help]'
+            '--no-git[skip git branch creation]'
           ;;
         rm|remove)
           _arguments \
             '1:branch:_orktree_branches' \
-            '--force[force removal]' \
-            '--help[show help]'
+            '--force[force removal]'
           ;;
         ls|list)
           _arguments \
-            '--quiet[only print branch names]' \
-            '--help[show help]'
-          ;;
-        shell-init)
-          _arguments \
-            '--shell[target shell]:shell:(bash zsh)'
+            '--quiet[only print branch names]'
           ;;
         help)
           _describe 'orktree command' commands

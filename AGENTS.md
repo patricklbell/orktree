@@ -42,9 +42,7 @@ State is stored in `<repo-name>.orktree/state.json` next to the repository root.
 | `orktree ls [--quiet]`         | List all orktrees with status and merged path            |
 | `orktree path <branch> [--from <base>] [--no-git]` | Print workspace path (auto-creates if absent) |
 | `orktree rm <branch> [--force]` | Unmount overlay, deregister git worktree, delete state  |
-| `orktree shell-init [--shell bash\|zsh]` | Print shell integration snippet (eval in .bashrc/.zshrc) |
-
-`orktree check` is a hidden diagnostic command (not in `--help`).
+| `orktree doctor`               | Diagnose issues (check prerequisites)                    |
 
 `<branch>` accepts: exact branch name, full orktree ID, or a unique prefix.
 Branch names containing `/` (e.g. `feature/my-branch`) create nested directories
@@ -73,8 +71,8 @@ orktree switch hotfix --from v1.2.3
 ## Repository layout
 
 ```
-orktree.go                   ← public Go API (Manager, Init, Discover, etc.)
-orktree_test.go              ← public API tests
+pkg/orktree/orktree.go       ← public Go API (Index, CreateIndex, DiscoverIndex, etc.)
+pkg/orktree/orktree_test.go  ← public API tests
 cmd/orktree/main.go          ← thin CLI wrapper (flag parsing, output formatting)
 completions/orktree.bash     ← bash completion + shell wrapper
 completions/orktree.zsh      ← zsh completion + shell wrapper
@@ -88,9 +86,9 @@ Makefile                     ← build, test, man page generation, install
 
 ### Porcelain vs plumbing
 
-The root package (`package orktree`) exposes a `Manager` type with methods
-for all orktree operations (Create, EnsureReady, List, Remove, Path, Find).
-The CLI in `cmd/orktree/` is a thin wrapper that parses flags, calls Manager
+`package orktree` (in `pkg/orktree/`) exposes an `Index` type with methods
+for all orktree operations (CreateOrktree, EnsureOrktree, ListOrktrees, RemoveOrktree, FindOrktree).
+The CLI in `cmd/orktree/` is a thin wrapper that parses flags, calls Index
 methods, and formats output. The library never writes to stdout/stderr or
 calls os.Exit.
 
@@ -102,8 +100,7 @@ calls os.Exit.
 go build ./...          # compile
 go test ./...           # run all tests
 go vet ./...            # static analysis
-make                    # build binary (output: ./orktree)
-make man                # generate man pages (requires pandoc)
+make build              # build binary + man pages (output: build/)
 make install            # install binary + man pages to $PREFIX (~/.local)
 ```
 
@@ -118,7 +115,7 @@ The module path is `github.com/patricklbell/orktree` (Go 1.23+).
 - All persistent state changes are written atomically (write to a temp file then
   `os.Rename`).
 - Path helpers (`GitTreeDir`, `OverlayDirs`, `MountPath`) live on
-  `*state.Config` so call sites stay free of path-construction logic.
+  `*state.State` so call sites stay free of path-construction logic.
 - Add tests in `internal/state/state_test.go` for any new state behaviour.
 
 ---

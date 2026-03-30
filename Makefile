@@ -1,18 +1,20 @@
 # Man page generation requires pandoc (https://pandoc.org)
 PREFIX ?= $(HOME)/.local
 
+OUT_DIR := build
 GO_FILES := $(shell find . -name '*.go')
 MAN_SRCS := $(wildcard doc/*.1.md)
-MAN_PAGES := $(patsubst doc/%.1.md,man/man1/%.1,$(MAN_SRCS))
+MAN_PAGES := $(patsubst doc/%.1.md,${OUT_DIR}/man/man1/%.1,$(MAN_SRCS))
 
-.PHONY: all build test vet clean install install-completions uninstall man
+.PHONY: all build orktree test vet clean install uninstall man
 
 all: build
 
-build: orktree
+build: orktree man
 
 orktree: $(GO_FILES)
-	go build -o orktree ./cmd/orktree
+	mkdir -p build
+	go build -o ${OUT_DIR}/orktree ./cmd/orktree
 
 test:
 	go test ./...
@@ -22,30 +24,25 @@ vet:
 
 man: $(MAN_PAGES)
 
-man/man1/%.1: doc/%.1.md
-	@mkdir -p man/man1
+${OUT_DIR}/man/man1/%.1: doc/%.1.md
+	@mkdir -p ${OUT_DIR}/man/man1
 	pandoc -s -t man $< -o $@
 
-install: orktree man
-	install -Dm755 orktree $(PREFIX)/bin/orktree
-	@for f in man/man1/*.1; do \
+install: build
+	install -Dm755 ${OUT_DIR}/orktree $(PREFIX)/bin/orktree
+	@for f in ${OUT_DIR}/man/man1/*.1; do \
 		install -Dm644 "$$f" "$(PREFIX)/share/man/man1/$$(basename $$f)"; \
 	done
 	install -Dm644 completions/orktree.bash $(PREFIX)/share/bash-completion/completions/orktree
 	install -Dm644 completions/orktree.zsh $(PREFIX)/share/zsh/site-functions/_orktree
 
-install-completions:
-	install -Dm644 completions/orktree.bash $(PREFIX)/share/bash-completion/completions/orktree
-	install -Dm644 completions/orktree.zsh $(PREFIX)/share/zsh/site-functions/_orktree
-
-uninstall:
+uninstall: build
 	rm -f $(PREFIX)/bin/orktree
 	rm -f $(PREFIX)/share/bash-completion/completions/orktree
 	rm -f $(PREFIX)/share/zsh/site-functions/_orktree
-	@for f in man/man1/*.1; do \
+	@for f in ${OUT_DIR}/man/man1/*.1; do \
 		rm -f "$(PREFIX)/share/man/man1/$$(basename $$f)"; \
 	done
 
 clean:
-	rm -f orktree
-	rm -rf man/
+	rm -rf build

@@ -5,70 +5,71 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/patricklbell/orktree/internal/overlay"
 	"github.com/patricklbell/orktree/pkg/orktree"
 )
 
-func TestInit_createsStateAndReturnsManager(t *testing.T) {
+func TestCreateIndex(t *testing.T) {
 	dir := t.TempDir()
-	mgr, err := orktree.Init(dir)
+	idx, err := orktree.CreateIndex(dir)
 	if err != nil {
-		t.Fatalf("Init: %v", err)
+		t.Fatalf("CreateIndex: %v", err)
 	}
-	if mgr.SourceRoot() != dir {
-		t.Errorf("SourceRoot = %q, want %q", mgr.SourceRoot(), dir)
+	if idx.SourceRoot() != dir {
+		t.Errorf("SourceRoot = %q, want %q", idx.SourceRoot(), dir)
 	}
 }
 
-func TestInit_idempotent(t *testing.T) {
+func TestCreateIndex_idempotent(t *testing.T) {
 	dir := t.TempDir()
-	mgr1, err := orktree.Init(dir)
+	idx1, err := orktree.CreateIndex(dir)
 	if err != nil {
-		t.Fatalf("first Init: %v", err)
+		t.Fatalf("first CreateIndex: %v", err)
 	}
-	mgr2, err := orktree.Init(dir)
+	idx2, err := orktree.CreateIndex(dir)
 	if err != nil {
-		t.Fatalf("second Init: %v", err)
+		t.Fatalf("second CreateIndex: %v", err)
 	}
-	if mgr1.SourceRoot() != mgr2.SourceRoot() {
-		t.Errorf("SourceRoot mismatch: %q vs %q", mgr1.SourceRoot(), mgr2.SourceRoot())
+	if idx1.SourceRoot() != idx2.SourceRoot() {
+		t.Errorf("SourceRoot mismatch: %q vs %q", idx1.SourceRoot(), idx2.SourceRoot())
 	}
 }
 
-func TestNewManager_failsIfNotInitialized(t *testing.T) {
+func TestLoadIndex_failsIfNotInitialized(t *testing.T) {
 	dir := t.TempDir()
-	_, err := orktree.NewManager(dir)
+	_, err := orktree.LoadIndex(dir)
 	if err == nil {
 		t.Fatal("expected error for uninitialized directory")
 	}
 }
 
-func TestDiscover_fromSubdirectory(t *testing.T) {
+func TestDiscoverIndex_fromSubdirectory(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := orktree.Init(dir); err != nil {
-		t.Fatalf("Init: %v", err)
+	if _, err := orktree.CreateIndex(dir); err != nil {
+		t.Fatalf("CreateIndex: %v", err)
 	}
 	sub := filepath.Join(dir, "pkg", "server")
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	mgr, err := orktree.Discover(sub)
+	idx, err := orktree.DiscoverIndex(sub)
 	if err != nil {
-		t.Fatalf("Discover: %v", err)
+		t.Fatalf("DiscoverIndex: %v", err)
 	}
-	if mgr.SourceRoot() != dir {
-		t.Errorf("SourceRoot = %q, want %q", mgr.SourceRoot(), dir)
+	if idx.SourceRoot() != dir {
+		t.Errorf("SourceRoot = %q, want %q", idx.SourceRoot(), dir)
 	}
 }
 
-func TestList_emptyReturnsEmptySlice(t *testing.T) {
+func TestListOrktrees_empty(t *testing.T) {
 	dir := t.TempDir()
-	mgr, err := orktree.Init(dir)
+	idx, err := orktree.CreateIndex(dir)
 	if err != nil {
-		t.Fatalf("Init: %v", err)
+		t.Fatalf("CreateIndex: %v", err)
 	}
-	infos, err := mgr.List()
+	infos, err := idx.ListOrktrees()
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatalf("ListOrktrees: %v", err)
 	}
 	if len(infos) != 0 {
 		t.Errorf("expected empty list, got %d items", len(infos))
@@ -130,9 +131,8 @@ func TestIsOverlayWhiteout(t *testing.T) {
 		{"src/main.go", false},
 	}
 	for _, tt := range tests {
-		if got := orktree.IsOverlayWhiteout(tt.path); got != tt.want {
+		if got := overlay.IsOverlayWhiteout(tt.path); got != tt.want {
 			t.Errorf("IsOverlayWhiteout(%q) = %v, want %v", tt.path, got, tt.want)
 		}
 	}
 }
-

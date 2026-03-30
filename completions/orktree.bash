@@ -24,7 +24,7 @@ _orktree() {
   local cur prev words cword
   _init_completion || return
 
-  local commands="switch sw ls list path p rm remove shell-init help"
+  local commands="switch sw ls list path p rm remove doctor doc help"
 
   if [[ $cword -eq 1 ]]; then
     COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -41,7 +41,7 @@ _orktree() {
           ;;
       esac
       if [[ $cur == -* ]]; then
-        COMPREPLY=( $(compgen -W "--from --no-git --help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--from --no-git" -- "$cur") )
       else
         _orktree_branches
       fi
@@ -54,29 +54,20 @@ _orktree() {
           ;;
       esac
       if [[ $cur == -* ]]; then
-        COMPREPLY=( $(compgen -W "--from --no-git --help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--from --no-git" -- "$cur") )
       else
         _orktree_branches
       fi
       ;;
     rm|remove)
       if [[ $cur == -* ]]; then
-        COMPREPLY=( $(compgen -W "--force --help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--force" -- "$cur") )
       else
         _orktree_branches
       fi
       ;;
     ls|list)
-      COMPREPLY=( $(compgen -W "--quiet --help" -- "$cur") )
-      ;;
-    shell-init)
-      case "$prev" in
-        --shell)
-          COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") )
-          return
-          ;;
-      esac
-      COMPREPLY=( $(compgen -W "--shell" -- "$cur") )
+      COMPREPLY=( $(compgen -W "--quiet" -- "$cur") )
       ;;
     help)
       COMPREPLY=( $(compgen -W "$commands" -- "$cur") )

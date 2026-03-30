@@ -77,7 +77,7 @@ func TestLoadRoundtrip(t *testing.T) {
 	}
 }
 
-func TestNewWorktree(t *testing.T) {
+func TestNewOrktree(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 
@@ -105,7 +105,7 @@ func TestNewWorktree(t *testing.T) {
 	}
 }
 
-func TestFindWorktreeByBranch(t *testing.T) {
+func TestFindOrktreeByBranch(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 
@@ -131,7 +131,7 @@ func TestFindWorktreeByBranch(t *testing.T) {
 	}
 }
 
-func TestFindWorktreeByID(t *testing.T) {
+func TestFindOrktreeByID(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 
@@ -154,7 +154,7 @@ func TestFindWorktreeByID(t *testing.T) {
 	}
 }
 
-func TestFindWorktreeIDPrefixMatch(t *testing.T) {
+func TestFindOrktreeIDPrefixMatch(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 
@@ -173,7 +173,7 @@ func TestFindWorktreeIDPrefixMatch(t *testing.T) {
 	}
 }
 
-func TestUpdateWorktree(t *testing.T) {
+func TestUpdateOrktree(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 	w, _ := state.NewOrktree(cfg, "old-branch")
@@ -220,7 +220,7 @@ func TestDependents(t *testing.T) {
 	}
 }
 
-func TestRemoveWorktree(t *testing.T) {
+func TestRemoveOrktree(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 	w, _ := state.NewOrktree(cfg, "to-remove")

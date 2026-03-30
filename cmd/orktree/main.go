@@ -28,8 +28,8 @@ func run(args []string) error {
 	}
 
 	switch args[0] {
-	case "check":
-		return cmdCheck(args[1:])
+	case "doctor", "doc":
+		return cmdDoctor(args[1:])
 	case "ls", "list":
 		return cmdLs(args[1:])
 	case "switch", "sw":
@@ -38,8 +38,6 @@ func run(args []string) error {
 		return cmdRm(args[1:])
 	case "path", "p":
 		return cmdPath(args[1:])
-	case "shell-init":
-		return cmdShellInit(args[1:])
 	case "help", "--help", "-h":
 		printUsage()
 		return nil
@@ -48,14 +46,12 @@ func run(args []string) error {
 	}
 }
 
-// discoverFromCwd locates the orktree Manager by walking up from cwd.
-// If no state is found, it auto-initializes at the git repo root.
-func discoverFromCwd() (*orktree.Manager, error) {
+func discoverFromCwd() (*orktree.Index, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
-	mgr, err := orktree.Discover(cwd)
+	mgr, err := orktree.DiscoverIndex(cwd)
 	if err == nil {
 		return mgr, nil
 	}
@@ -67,19 +63,19 @@ func discoverFromCwd() (*orktree.Manager, error) {
 	}
 	repoRoot := strings.TrimSpace(string(out))
 	fmt.Fprintf(os.Stderr, "orktree: no workspace found \xe2\x80\x94 initializing at %s\n", repoRoot)
-	return orktree.Init(repoRoot)
+	return orktree.CreateIndex(repoRoot)
 }
 
 // ---------------------------------------------------------------------------
-// check
+// doctor
 // ---------------------------------------------------------------------------
 
-func cmdCheck(_ []string) error {
+func cmdDoctor(_ []string) error {
 	fmt.Println("orktree prerequisites")
 	fmt.Println()
 
 	ok := true
-	for _, p := range orktree.CheckPrerequisites() {
+	for _, p := range orktree.CheckEnvironmentPrerequisites() {
 		if p.OK {
 			fmt.Printf("  \xe2\x9c\x93  %-22s\n", p.Name)
 		} else {
@@ -92,7 +88,7 @@ func cmdCheck(_ []string) error {
 	if ok {
 		fmt.Println("All prerequisites satisfied.")
 	} else {
-		fmt.Println("Run the fix commands above (log out and back in after any usermod), then re-run 'orktree check'.")
+		fmt.Println("Run the fix commands above (log out and back in after any usermod), then re-run 'orktree doctor'.")
 		return fmt.Errorf("prerequisites not met")
 	}
 	return nil
@@ -108,9 +104,6 @@ func cmdLs(args []string) error {
 		switch args[i] {
 		case "--quiet", "-q":
 			quiet = true
-		case "--help", "-h":
-			printUsage()
-			return nil
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -121,7 +114,7 @@ func cmdLs(args []string) error {
 		return err
 	}
 
-	infos, err := mgr.List()
+	infos, err := mgr.ListOrktrees()
 	if err != nil {
 		return err
 	}
@@ -194,10 +187,6 @@ func cmdSwitch(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: orktree switch <branch> [--from <base>] [--no-git]")
 	}
-	if args[0] == "--help" || args[0] == "-h" {
-		printUsage()
-		return nil
-	}
 
 	branch := args[0]
 	from := ""
@@ -213,9 +202,6 @@ func cmdSwitch(args []string) error {
 			from = args[i]
 		case "--no-git":
 			noGit = true
-		case "--help", "-h":
-			printUsage()
-			return nil
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -240,12 +226,12 @@ func cmdSwitch(args []string) error {
 		return err
 	}
 
-	_, findErr := mgr.Find(branch)
+	_, findErr := mgr.FindOrktree(branch)
 	if findErr != nil {
 		fmt.Fprintf(os.Stderr, "No orktree for '%s' \xe2\x80\x94 creating it now...\n", branch)
 	}
 
-	info, err := mgr.EnsureReady(branch, orktree.CreateOpts{From: from, NoGit: noGit})
+	info, err := mgr.EnsureOrktree(branch, orktree.CreateOrktreeOptions{From: from, NoGit: noGit})
 	if err != nil {
 		return err
 	}
@@ -263,10 +249,6 @@ func cmdPath(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: orktree path <branch> [--from <base>] [--no-git]")
 	}
-	if args[0] == "--help" || args[0] == "-h" {
-		printUsage()
-		return nil
-	}
 
 	branch := args[0]
 	from := ""
@@ -282,9 +264,6 @@ func cmdPath(args []string) error {
 			from = args[i]
 		case "--no-git":
 			noGit = true
-		case "--help", "-h":
-			printUsage()
-			return nil
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -301,60 +280,18 @@ func cmdPath(args []string) error {
 		return nil
 	}
 
-	_, findErr := mgr.Find(branch)
+	_, findErr := mgr.FindOrktree(branch)
 	if findErr != nil {
 		fmt.Fprintf(os.Stderr, "No orktree for '%s' \xe2\x80\x94 creating it now...\n", branch)
 	}
 
-	info, err := mgr.EnsureReady(branch, orktree.CreateOpts{From: from, NoGit: noGit})
+	info, err := mgr.EnsureOrktree(branch, orktree.CreateOrktreeOptions{From: from, NoGit: noGit})
 	if err != nil {
 		return err
 	}
 
 	fmt.Println(info.MergedPath)
 	return nil
-}
-
-// ---------------------------------------------------------------------------
-// shell-init
-// ---------------------------------------------------------------------------
-
-const shellWrapper = `orktree() {
-  case "$1" in
-    switch|sw)
-      local _orktree_path
-      _orktree_path="$(command orktree path "${@:2}")" && cd "$_orktree_path" || return $?
-      ;;
-    *)
-      command orktree "$@"
-      ;;
-  esac
-}
-`
-
-func cmdShellInit(args []string) error {
-	shell := ""
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--shell":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--shell requires a value")
-			}
-			i++
-			shell = args[i]
-		default:
-			return fmt.Errorf("unknown flag %q", args[i])
-		}
-	}
-	switch shell {
-	case "", "bash", "zsh":
-		fmt.Print(shellWrapper)
-		return nil
-	case "fish":
-		return fmt.Errorf("fish shell support is not yet implemented")
-	default:
-		return fmt.Errorf("unsupported shell %q; supported: bash, zsh", shell)
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -444,18 +381,11 @@ func cmdRm(args []string) error {
 		return fmt.Errorf("usage: orktree rm <branch> [--force]")
 	}
 	ref := args[0]
-	if ref == "--help" || ref == "-h" {
-		printUsage()
-		return nil
-	}
 	force := false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--force", "-f":
 			force = true
-		case "--help", "-h":
-			printUsage()
-			return nil
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -466,13 +396,13 @@ func cmdRm(args []string) error {
 		return err
 	}
 
-	info, err := mgr.Find(ref)
+	info, err := mgr.FindOrktree(ref)
 	if err != nil {
 		return err
 	}
 
 	// Always check for dependents (even with --force).
-	rc, err := mgr.CheckRemove(ref)
+	rc, err := mgr.CheckRemoveOrktree(ref)
 	if err != nil {
 		return err
 	}
@@ -487,7 +417,7 @@ func cmdRm(args []string) error {
 	}
 
 	if force {
-		if err := mgr.Remove(ref); err != nil {
+		if err := mgr.RemoveOrktree(ref); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Branch)
@@ -496,7 +426,7 @@ func cmdRm(args []string) error {
 
 	// Clean orktree — remove without prompt.
 	if rc.IsClean() {
-		if err := mgr.Remove(ref); err != nil {
+		if err := mgr.RemoveOrktree(ref); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Branch)
@@ -541,7 +471,7 @@ func cmdRm(args []string) error {
 		return fmt.Errorf("removal cancelled")
 	}
 
-	if err := mgr.Remove(ref); err != nil {
+	if err := mgr.RemoveOrktree(ref); err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Branch)
@@ -565,16 +495,15 @@ Commands:
   ls      [--quiet]                           List orktrees with status and size
   path    <branch> [--from <b>] [--no-git]    Print workspace path (auto-creates)
   rm      <branch> [--force]                  Remove orktree
-  shell-init [--shell bash|zsh]               Print shell cd-on-switch snippet
+  doctor									  Runs the doctor to diagnose issues
 
 Aliases:  sw → switch,  p → path,  list → ls,  remove → rm
 
 Getting started:
   cd /path/to/your/repo
-  eval "$(orktree shell-init)"     # add to ~/.bashrc or ~/.zshrc
   orktree switch my-feature        # creates and enters orktree
   orktree switch -                 # returns to source root
 
-Run 'orktree <command> --help' for details on a specific command.
+Run 'man orktree <command>' for details on a specific command.
 `)
 }
