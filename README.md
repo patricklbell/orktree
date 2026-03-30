@@ -56,7 +56,7 @@ orktree incurs the storage of a conventional `git worktree add`.
 
 ### More information
 
-See the [wiki](doc/Home) for tips on how to use orktree with existing tools.
+See the [wiki](doc/Home.md) for tips on how to use orktree with existing tools.
 
 ## Developer instructions
 
