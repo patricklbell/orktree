@@ -96,20 +96,97 @@ func Remove(upper, work, merged string) error {
 	return os.RemoveAll(parent)
 }
 
-// Reports whether the path represents overlayfs internal metadata for file deletion or directory opacity.
-func IsOverlayWhiteout(relPath string) bool {
-	return strings.HasPrefix(filepath.Base(relPath), ".wh.")
+// getOverlayXattr reads an overlayfs xattr, checking both the trusted.overlay.
+// and user.overlay. namespaces (the latter is used by unprivileged fuse-overlayfs).
+func getOverlayXattr(path, name string) (string, bool) {
+	for _, prefix := range []string{"trusted.overlay.", "user.overlay."} {
+		sz, err := syscall.Getxattr(path, prefix+name, nil)
+		if err != nil || sz <= 0 {
+			continue
+		}
+		buf := make([]byte, sz)
+		sz, err = syscall.Getxattr(path, prefix+name, buf)
+		if err != nil {
+			continue
+		}
+		return string(buf[:sz]), true
+	}
+	return "", false
 }
 
-// Returns relative paths of files that genuinely differ from the corresponding file in lower.
-// Files that were copied up by the overlay but reverted to identical content
-// are excluded.  Overlayfs whiteout markers (deletions) are always reported.
-// Only file content is compared; permission or mode changes alone are not detected.
+// isWhiteout reports whether a file in the overlay upper directory is a
+// deletion marker (whiteout).  Three formats are recognised:
+//   - character device with 0/0 device number (kernel overlayfs)
+//   - zero-size regular file with the trusted.overlay.whiteout (or
+//     user.overlay.whiteout) xattr (kernel overlayfs ≥ 5.8)
+//   - zero-size regular file whose name starts with .wh.
+//     (fuse-overlayfs naming convention; requiring zero-size avoids
+//     misidentifying user files that happen to start with .wh.)
+func isWhiteout(path string, info os.FileInfo) bool {
+	if info.Mode()&os.ModeCharDevice != 0 {
+		if st, ok := info.Sys().(*syscall.Stat_t); ok && st.Rdev == 0 {
+			return true
+		}
+	}
+	if info.Mode().IsRegular() && info.Size() == 0 {
+		if _, ok := getOverlayXattr(path, "whiteout"); ok {
+			return true
+		}
+	}
+	// fuse-overlayfs whiteouts are always zero-size regular files.
+	if info.Mode().IsRegular() && info.Size() == 0 && strings.HasPrefix(filepath.Base(path), ".wh.") {
+		return true
+	}
+	return false
+}
+
+// isOpaqueDir reports whether a directory in the overlay upper directory
+// replaces (rather than merges with) the corresponding directory in the lower
+// layer.  Two formats are recognised:
+//   - trusted.overlay.opaque (or user.overlay.opaque) xattr set to "y"
+//     (kernel overlayfs)
+//   - a zero-size .wh..wh..opq sentinel file inside the directory
+//     (fuse-overlayfs; requiring zero-size avoids misidentifying a
+//     user-created file with the same name)
+func isOpaqueDir(path string) bool {
+	if val, ok := getOverlayXattr(path, "opaque"); ok && val == "y" {
+		return true
+	}
+	sentinel := filepath.Join(path, ".wh..wh..opq")
+	if fi, err := os.Lstat(sentinel); err == nil && fi.Mode().IsRegular() && fi.Size() == 0 {
+		return true
+	}
+	return false
+}
+
+func isInsideOpaqueDir(rel string, opaqueDirs []string) bool {
+	for _, od := range opaqueDirs {
+		if strings.HasPrefix(rel, od+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// Returns relative paths of files that differ from the corresponding
+// file in lower.  Overlayfs internal metadata — whiteouts (deletion markers)
+// and opaque directory sentinels — are excluded from the result.  Files that
+// were copied up by the overlay but reverted to identical content are also
+// excluded.  Only file content is compared; permission or mode changes alone
+// are not detected.
+//
+// Opaque directories (where the upper completely replaces the lower) are
+// detected via xattr (trusted.overlay.opaque / user.overlay.opaque = "y") or
+// the .wh..wh..opq sentinel file.  All files inside an opaque directory are
+// reported as dirty regardless of whether a matching file exists in lower,
+// because the lower version is masked.
 //
 // When limit > 0, at most limit paths are collected in files, but the walk
 // continues so that total reflects the true number of dirty files.
 // When limit <= 0, all dirty paths are collected and total == len(files).
 func DirtyUpperFiles(upper, lower string, limit int) (files []string, total int, err error) {
+	var opaqueDirs []string
+
 	err = filepath.Walk(upper, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -121,23 +198,29 @@ func DirtyUpperFiles(upper, lower string, limit int) (files []string, total int,
 			}
 			return nil
 		}
-		if info.IsDir() {
-			return nil
-		}
 
 		rel, _ := filepath.Rel(upper, path)
 
-		isDirty := false
-
-		// Overlayfs whiteout: character device with rdev 0.
-		if info.Mode()&os.ModeCharDevice != 0 {
-			if st, ok := info.Sys().(*syscall.Stat_t); ok && st.Rdev == 0 {
-				isDirty = true
+		if info.IsDir() {
+			if rel != "." && isOpaqueDir(path) {
+				opaqueDirs = append(opaqueDirs, rel)
 			}
+			return nil
 		}
 
-		// Opaque directory marker.
-		if !isDirty && base == ".wh..wh..opq" {
+		// Skip overlay internal metadata.
+		if base == ".wh..wh..opq" {
+			return nil
+		}
+		if isWhiteout(path, info) {
+			return nil
+		}
+
+		isDirty := false
+
+		// Files inside an opaque directory are always dirty — the lower
+		// version of the parent directory is completely masked.
+		if isInsideOpaqueDir(rel, opaqueDirs) {
 			isDirty = true
 		}
 

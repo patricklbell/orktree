@@ -294,9 +294,6 @@ func (i *Index) CheckRemoveOrktree(branch string) (*RemoveCheck, error) {
 
 		lowerDir := i.state.MountPath(w)
 		for _, f := range dirtyFiles {
-			if overlay.IsOverlayWhiteout(f) {
-				continue
-			}
 			if ignoredSet[f] {
 				rc.IgnoredDirty++
 				continue
@@ -321,18 +318,12 @@ func (i *Index) CheckRemoveOrktree(branch string) (*RemoveCheck, error) {
 		} else {
 			rc.UnmergedTotal = len(commits)
 		}
-	} else { // NoGit mode: treat all dirty files as untracked, skipping whiteouts.
-		var filtered []string
-		for _, f := range dirtyFiles {
-			if !overlay.IsOverlayWhiteout(f) {
-				filtered = append(filtered, f)
-			}
-		}
-		rc.UntrackedTotal = len(filtered)
-		if len(filtered) > 10 {
-			rc.UntrackedDirty = filtered[:10]
+	} else { // NoGit mode: treat all dirty files as untracked.
+		rc.UntrackedTotal = len(dirtyFiles)
+		if len(dirtyFiles) > 10 {
+			rc.UntrackedDirty = dirtyFiles[:10]
 		} else {
-			rc.UntrackedDirty = filtered
+			rc.UntrackedDirty = dirtyFiles
 		}
 	}
 
