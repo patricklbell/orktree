@@ -1,7 +1,0 @@
-{
-  "terminal.integrated.profiles.linux": {
-    "bash": {
-      "path": "bash"
-    }
-  },
-}
