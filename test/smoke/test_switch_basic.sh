@@ -4,9 +4,9 @@ source "$(dirname "$0")/lib.sh"
 smoke_setup
 cd "$REPO_DIR"
 
-$ORKTREE switch feature-x
+"$ORKTREE" switch feature-x
 
-ws=$($ORKTREE path feature-x)
+ws=$("$ORKTREE" path feature-x)
 assert_dir_exists "$ws"
 
 echo "hello" > "$ws/test_file.txt"

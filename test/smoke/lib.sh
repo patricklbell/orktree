@@ -38,7 +38,7 @@ assert_branch() {
 smoke_teardown() {
   if [[ -n "${SMOKE_TMPDIR:-}" ]]; then
     # Best-effort unmount any fuse-overlayfs mounts under the temp dir
-    mount | grep "$SMOKE_TMPDIR" | awk '{print $3}' | while read -r mp; do
+    mount | grep -F "$SMOKE_TMPDIR" | awk '{print $3}' | while read -r mp; do
       fusermount -uz "$mp" 2>/dev/null || fusermount3 -uz "$mp" 2>/dev/null || true
     done || true
     rm -rf "$SMOKE_TMPDIR"
