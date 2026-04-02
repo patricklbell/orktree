@@ -6,7 +6,7 @@ GO_FILES := $(shell find . -name '*.go')
 MAN_SRCS := $(wildcard doc/*.1.md)
 MAN_PAGES := $(patsubst doc/%.1.md,${OUT_DIR}/man/man1/%.1,$(MAN_SRCS))
 
-.PHONY: all build orktree test vet clean install uninstall man
+.PHONY: all build orktree test vet clean install uninstall man smoke
 
 all: build
 
@@ -43,6 +43,9 @@ uninstall: build
 	@for f in ${OUT_DIR}/man/man1/*.1; do \
 		rm -f "$(PREFIX)/share/man/man1/$$(basename $$f)"; \
 	done
+
+smoke: build
+	bash test/smoke/run.sh
 
 clean:
 	rm -rf build
