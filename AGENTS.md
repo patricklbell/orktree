@@ -81,6 +81,7 @@ internal/overlay/overlay.go  ← fuse-overlayfs mount/unmount helpers
 internal/state/state.go      ← JSON state read/write + path helpers
 internal/state/state_test.go ← state unit tests
 doc/*.1.md                   ← man page sources (pandoc markdown)
+test/smoke/                  ← end-to-end smoke tests (bash, require fuse-overlayfs)
 Makefile                     ← build, test, man page generation, install
 ```
 
@@ -101,6 +102,7 @@ go build ./...          # compile
 go test ./...           # run all tests
 go vet ./...            # static analysis
 make build              # build binary + man pages (output: build/)
+make smoke              # end-to-end smoke tests (requires fuse-overlayfs)
 make install            # install binary + man pages to $PREFIX (~/.local)
 ```
 

@@ -36,7 +36,7 @@ orktree ls
 orktree switch -
 
 # Remove orktree (safe)
-orktree rm feature-x
+orktree rm feature-x-variant
 ```
 
 ### How it works
@@ -87,4 +87,5 @@ make install   # installs to ~/.local by default (PREFIX=~/.local)
 ### Build and Test
 ```sh
 make build test    # builds to build by default (OUT_DIR=build)
+make smoke         # end-to-end smoke tests (requires fuse-overlayfs)
 ```
