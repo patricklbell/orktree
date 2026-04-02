@@ -22,7 +22,8 @@ it is mounted.
 
 Use **-** to print the source root path.
 
-This command is used internally by shell integration.
+Useful in shell integration and container workflows to resolve workspace
+and mount paths.
 
 # OPTIONS
 
@@ -52,9 +53,10 @@ Use in a script:
 
     cd "$(orktree path fix-parser)"
 
-Mount in a container:
+Mount in a container (preserves git functionality):
 
-    wspath="$(orktree path fix-parser)" && docker run --rm -it -v "$wspath":/workspace myimage
+    srcroot="$(orktree path -)" || exit 1
+    docker run --rm -it -v "$srcroot":"$srcroot" -v "$srcroot.orktree":"$srcroot.orktree" -w "$(orktree path fix-parser)" myimage
 
 # SEE ALSO
 

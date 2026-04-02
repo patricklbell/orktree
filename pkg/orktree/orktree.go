@@ -48,7 +48,7 @@ func CheckEnvironmentPrerequisites() []Prerequisite {
 		},
 		{
 			Name: "git",
-			Fix:  "install git: https://git-sci.com/downloads",
+			Fix:  "install git: https://git-scm.com/downloads",
 			OK:   gitErr == nil,
 		},
 		{

@@ -14,32 +14,46 @@ echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
 
 Run `orktree doctor` to verify the setting is active.
 
-## The problem
+---
 
-Each orktree is an isolated workspace. But build environments, language
-runtimes, and system dependencies differ across projects and branches.
-Containers let you pair each orktree with a consistent, reproducible
-environment — all sharing the same base image. No rebuild needed per branch.
+## How orktree + containers interact
+
+Each orktree's `.git` file contains an absolute host path pointing to git
+worktree metadata (e.g., `gitdir: /home/user/repo/.git/worktrees/tree`).
+Submodule `.git` files likewise reference host-absolute paths. For git to work
+inside a container, these paths must resolve — which means the repository and
+its `.orktree` sibling directory must be mounted at their **real host paths**,
+not at a synthetic `/workspace`.
 
 ---
 
 ## Quick start
 
-Resolve the workspace path and bind-mount it into a container:
-
 ```bash
-# Resolve the workspace path (exits on error)
+srcroot="$(orktree path -)" || exit 1
 wspath="$(orktree path feature-x)" || exit 1
-docker run --rm -it -v "$wspath":/workspace -w /workspace myimage bash
+docker run --rm -it \
+  -v "$srcroot":"$srcroot" \
+  -v "$srcroot.orktree":"$srcroot.orktree" \
+  -w "$wspath" myimage bash
 ```
 
-This works because `orktree path` returns the fuse-overlayfs merged view,
-which is a regular directory. Any container runtime can bind-mount it. Writes
-inside the container land in the orktree's CoW upper directory.
+`orktree path -` prints the source root. Appending `.orktree` gives the sibling
+data directory. Both are mounted at their host paths so every absolute path
+inside `.git` files, worktree metadata, and submodule pointers resolves
+correctly.
 
 > **Warning:** Do not run `orktree rm` while a container is using the orktree.
 > The overlay will be unmounted, causing I/O errors or data loss in the running
 > container. Stop the container first.
+
+> **Common mistake:** If you omit the `.orktree` mount, git commands inside the
+> container will fail with `fatal: not a git repository` because the overlay
+> internals are invisible. Always mount both the repo and its `.orktree`
+> sibling.
+
+The container's working directory will be the orktree's host path (e.g.,
+`/home/user/repo.orktree/feature-x/`).
 
 ---
 
@@ -54,7 +68,10 @@ be owned by root on the host.
 Pass `--user` to match the host UID:
 
 ```bash
-docker run --rm -it --user "$(id -u):$(id -g)" -v "$wspath":/workspace myimage
+docker run --rm -it --user "$(id -u):$(id -g)" \
+  -v "$srcroot":"$srcroot" \
+  -v "$srcroot.orktree":"$srcroot.orktree" \
+  -w "$wspath" myimage
 ```
 
 ### Podman (recommended)
@@ -62,18 +79,23 @@ docker run --rm -it --user "$(id -u):$(id -g)" -v "$wspath":/workspace myimage
 Podman maps the host UID automatically with `--userns=keep-id`:
 
 ```bash
-podman run --rm -it --userns=keep-id -v "$wspath":/workspace myimage
+podman run --rm -it --userns=keep-id \
+  -v "$srcroot":"$srcroot" \
+  -v "$srcroot.orktree":"$srcroot.orktree" \
+  -w "$wspath" myimage
 ```
 
 ---
 
 ## SELinux
 
-On SELinux-enabled hosts (Fedora, RHEL), add `:z` to the volume mount so the
-container can access the bind-mounted directory:
+On SELinux-enabled hosts (Fedora, RHEL), add `:z` to both volume mounts:
 
 ```bash
-docker run --rm -it -v "$wspath":/workspace:z myimage
+docker run --rm -it \
+  -v "$srcroot":"$srcroot":z \
+  -v "$srcroot.orktree":"$srcroot.orktree":z \
+  -w "$wspath" myimage
 ```
 
 ---
@@ -83,9 +105,13 @@ docker run --rm -it -v "$wspath":/workspace:z myimage
 Use `orktree ls --quiet` to spawn one container per orktree:
 
 ```bash
+srcroot="$(orktree path -)" || exit 1
 for branch in $(orktree ls --quiet); do
   wspath="$(orktree path "$branch")" || continue
-  docker run -d --name "dev-${branch//\//-}" -v "$wspath":/workspace myimage
+  docker run -d --name "dev-${branch//\//-}" \
+    -v "$srcroot":"$srcroot" \
+    -v "$srcroot.orktree":"$srcroot.orktree" \
+    -w "$wspath" myimage
 done
 ```
 
@@ -93,12 +119,17 @@ done
 
 ## docker-compose
 
-Generate an `.env` file containing the resolved workspace path, then run
+Generate an `.env` file containing the resolved paths, then run
 `docker compose up`. Docker Compose loads `.env` automatically for YAML
 interpolation.
 
 ```bash
-echo "WORKSPACE_PATH=$(orktree path feature-x)" > .env
+srcroot="$(orktree path -)"
+cat > .env <<EOF
+SRC_ROOT=$srcroot
+ORKTREE_DIR=$srcroot.orktree
+WORKSPACE_PATH=$(orktree path feature-x)
+EOF
 docker compose up
 ```
 
@@ -112,9 +143,12 @@ services:
     image: myimage
     volumes:
       - type: bind
-        source: ${WORKSPACE_PATH:?Set WORKSPACE_PATH}
-        target: /workspace
-    working_dir: /workspace
+        source: ${SRC_ROOT:?Set SRC_ROOT}
+        target: ${SRC_ROOT}
+      - type: bind
+        source: ${ORKTREE_DIR:?Set ORKTREE_DIR}
+        target: ${ORKTREE_DIR}
+    working_dir: ${WORKSPACE_PATH:?Set WORKSPACE_PATH}
     stdin_open: true
     tty: true
 ```
@@ -123,19 +157,37 @@ services:
 
 ## VS Code devcontainer
 
-Use `workspaceMount` to point at the orktree merged view:
+Set the source root as an environment variable, then open the orktree:
+
+```bash
+export ORKTREE_SRC_ROOT="$(orktree path -)"
+code "$(orktree path feature-x)"
+```
+
+`.devcontainer/devcontainer.json`:
 
 ```jsonc
 {
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
-  "workspaceFolder": "/workspace"
+  "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+  "workspaceFolder": "${localWorkspaceFolder}",
+  "mounts": [
+    "source=${localEnv:ORKTREE_SRC_ROOT},target=${localEnv:ORKTREE_SRC_ROOT},type=bind",
+    "source=${localEnv:ORKTREE_SRC_ROOT}.orktree,target=${localEnv:ORKTREE_SRC_ROOT}.orktree,type=bind"
+  ]
 }
 ```
 
-If you open the merged path directly in VS Code (`code "$(orktree path
-feature-x)"`), the default mount just works — no custom `workspaceMount`
-needed.
+`${localEnv:ORKTREE_SRC_ROOT}` reads the host environment variable set before
+launching VS Code. Both the source root and its `.orktree` sibling are mounted
+at their host paths so git works inside the devcontainer.
+
+For simple file editing without git support, skip the extra mounts and open the
+merged path directly:
+
+```bash
+code "$(orktree path feature-x)"
+```
 
 ---
 
@@ -145,6 +197,6 @@ needed.
 - `orktree rm` has no way to detect active bind-mounts from containers, so
   this is a user responsibility.
 - **Docker-in-Docker:** if you're already inside a container, the bind-mount
-  path must be valid on the Docker host, not inside the outer container.
+  paths must be valid on the Docker host, not inside the outer container.
 - **CI/CD:** these patterns work identically in CI — use `orktree path` in
   your pipeline scripts.
