@@ -3,6 +3,17 @@
 > **Linux only.** Orktree requires fuse-overlayfs, which is Linux-only.
 > The workflows below apply to Docker or Podman running natively on Linux.
 
+## Prerequisites
+
+Enable `user_allow_other` in the FUSE configuration so the Docker daemon can
+access orktree mount points:
+
+```bash
+echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
+```
+
+Run `orktree doctor` to verify the setting is active.
+
 ## The problem
 
 Each orktree is an isolated workspace. But build environments, language

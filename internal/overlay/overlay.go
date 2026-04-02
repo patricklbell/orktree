@@ -1,6 +1,7 @@
 package overlay
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -11,6 +12,32 @@ import (
 	"strings"
 	"syscall"
 )
+
+// fuseConfPath is the path to the FUSE configuration file.
+// Tests override this to avoid depending on the system config.
+var fuseConfPath = "/etc/fuse.conf"
+
+// UserAllowOther reports whether /etc/fuse.conf has an uncommented
+// user_allow_other directive, which permits non-root FUSE mounts
+// to be accessed by other users (including the Docker daemon).
+func UserAllowOther() bool {
+	f, err := os.Open(fuseConfPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		if line == "user_allow_other" {
+			return true
+		}
+	}
+	return false
+}
 
 func Create(upper, work, merged string) error {
 	for _, dir := range []string{upper, work, merged} {
@@ -23,6 +50,9 @@ func Create(upper, work, merged string) error {
 
 func Mount(source, upper, work, merged string) error {
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", source, upper, work)
+	if UserAllowOther() {
+		opts += ",allow_other"
+	}
 	cmd := exec.Command("fuse-overlayfs", "-o", opts, merged)
 	var errBuf bytes.Buffer
 	cmd.Stderr = &errBuf

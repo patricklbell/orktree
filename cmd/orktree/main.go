@@ -74,13 +74,45 @@ func cmdDoctor(_ []string) error {
 	fmt.Println("orktree prerequisites")
 	fmt.Println()
 
-	ok := true
-	for _, p := range orktree.CheckEnvironmentPrerequisites() {
-		if p.OK {
-			fmt.Printf("  \xe2\x9c\x93  %-22s\n", p.Name)
+	prereqs := orktree.CheckEnvironmentPrerequisites()
+
+	// Compute max name width for aligned output.
+	maxWidth := 0
+	for _, p := range prereqs {
+		if len(p.Name) > maxWidth {
+			maxWidth = len(p.Name)
+		}
+	}
+
+	var required, optional []orktree.Prerequisite
+	for _, p := range prereqs {
+		if p.Optional {
+			optional = append(optional, p)
 		} else {
-			fmt.Printf("  \xe2\x9c\x97  %-22s  ->  %s\n", p.Name, p.Fix)
+			required = append(required, p)
+		}
+	}
+
+	ok := true
+	fmtStr := fmt.Sprintf("  %%s  %%-%ds", maxWidth)
+	for _, p := range required {
+		if p.OK {
+			fmt.Printf(fmtStr+"\n", "\xe2\x9c\x93", p.Name)
+		} else {
+			fmt.Printf(fmtStr+"  ->  %s\n", "\xe2\x9c\x97", p.Name, p.Fix)
 			ok = false
+		}
+	}
+
+	if len(optional) > 0 {
+		fmt.Println()
+		fmt.Println("Optional:")
+		for _, p := range optional {
+			if p.OK {
+				fmt.Printf(fmtStr+"\n", "\xe2\x9c\x93", p.Name)
+			} else {
+				fmt.Printf(fmtStr+"  ->  %s\n", "\xe2\x9c\x97", p.Name, p.Fix)
+			}
 		}
 	}
 

@@ -25,11 +25,11 @@ func (i *Index) IsGitRepo() bool {
 	return i.state.IsGitRepo
 }
 
-// Prerequisite describes a single prerequisite check result.
 type Prerequisite struct {
-	Name string
-	Fix  string
-	OK   bool
+	Name     string
+	Fix      string
+	OK       bool
+	Optional bool // advisory check — not required for core functionality
 }
 
 func CheckEnvironmentPrerequisites() []Prerequisite {
@@ -50,6 +50,12 @@ func CheckEnvironmentPrerequisites() []Prerequisite {
 			Name: "git",
 			Fix:  "install git: https://git-sci.com/downloads",
 			OK:   gitErr == nil,
+		},
+		{
+			Name:     "user_allow_other (/etc/fuse.conf)",
+			Fix:      "echo 'user_allow_other' | sudo tee -a /etc/fuse.conf   # needed for Docker bind-mounts",
+			OK:       overlay.UserAllowOther(),
+			Optional: true,
 		},
 	}
 }

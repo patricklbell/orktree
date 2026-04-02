@@ -73,6 +73,13 @@ After installing, ensure your user is in the required groups (run once, then log
 |--------|-------------------------------------------|-------------------------------|
 | `fuse` | access `/dev/fuse` for rootless overlayfs | `sudo usermod -aG fuse $USER` |
 
+#### Optional
+
+| Setting              | Why                                                      | Fix                                                      |
+|----------------------|----------------------------------------------------------|----------------------------------------------------------|
+| `user_allow_other`   | let Docker/Podman access orktree mounts (see [Container Workflows](doc/Container-Integration.md)) | `echo 'user_allow_other' \| sudo tee -a /etc/fuse.conf` |
+
+Run `orktree doctor` to verify all prerequisites.
 
 ### Install from source
 

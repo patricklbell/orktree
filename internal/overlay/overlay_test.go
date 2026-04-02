@@ -149,6 +149,41 @@ func TestDirtyUpperFiles_emptyUpper(t *testing.T) {
 	}
 }
 
+func TestUserAllowOther(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"uncommented", "user_allow_other\n", true},
+		{"commented", "#user_allow_other\n", false},
+		{"commented with space", "# user_allow_other\n", false},
+		{"empty file", "", false},
+		{"mixed lines", "# some comment\nuser_allow_other\n", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			path := filepath.Join(tmp, "fuse.conf")
+			os.WriteFile(path, []byte(tt.content), 0o644)
+			fuseConfPath = path
+			defer func() { fuseConfPath = "/etc/fuse.conf" }()
+			if got := UserAllowOther(); got != tt.want {
+				t.Errorf("UserAllowOther() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUserAllowOther_missingFile(t *testing.T) {
+	orig := fuseConfPath
+	fuseConfPath = "/nonexistent/fuse.conf"
+	defer func() { fuseConfPath = orig }()
+	if UserAllowOther() {
+		t.Error("UserAllowOther() = true for missing file, want false")
+	}
+}
+
 func TestDirtyUpperFiles_sameSizeDifferentContent(t *testing.T) {
 	upper := t.TempDir()
 	lower := t.TempDir()

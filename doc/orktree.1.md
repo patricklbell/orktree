@@ -41,7 +41,7 @@ no files are duplicated.
   bypass safety checks.
 
 **doctor**
-: Check prerequisites and diagnose issues.
+: Check required and optional prerequisites and diagnose issues.
 
 # ZERO-COST ORKTREES
 
@@ -65,6 +65,10 @@ Run `orktree doctor` to check prerequisites.
 - **fuse-overlayfs** — rootless copy-on-write overlay filesystem
 - **fuse group** — /dev/fuse access
 - **git** — version control
+
+Optional:
+
+- **user_allow_other** (/etc/fuse.conf) — allows other users (e.g. the Docker daemon) to access orktree mounts. Required for container bind-mount workflows.
 
 # FILES
 
