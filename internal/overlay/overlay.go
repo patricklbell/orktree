@@ -32,11 +32,7 @@ func UserAllowOther() bool {
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
-<<<<<<< HEAD
 		if line == "user_allow_other" {
-=======
-		if strings.Contains(line, "user_allow_other") {
->>>>>>> 5342122 (cmd/switch: improve tty hint to reference docs instead of repo paths)
 			return true
 		}
 	}

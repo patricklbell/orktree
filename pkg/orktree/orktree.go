@@ -2,6 +2,7 @@ package orktree
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -454,6 +455,9 @@ func (i *Index) setupGitForOrktree(w *state.Orktree, branch, from, upper string)
 			if err := seedGitFile(treeDir, upper); err != nil {
 				return "", err
 			}
+			if err := seedSubmoduleGitFiles(fromMerged, upper); err != nil {
+				return "", err
+			}
 			w.GitTreePath = treeDir
 			w.LowerDir = fromMerged
 			w.LowerOrktreeBranch = fromOrk.Branch
@@ -479,6 +483,9 @@ func (i *Index) setupGitForOrktree(w *state.Orktree, branch, from, upper string)
 		if err := seedGitFile(treeDir, upper); err != nil {
 			return "", err
 		}
+		if err := seedSubmoduleGitFiles(i.state.SourceRoot, upper); err != nil {
+			return "", err
+		}
 		w.GitTreePath = treeDir
 		w.LowerDir = i.state.SourceRoot
 		return i.state.SourceRoot, nil
@@ -499,7 +506,7 @@ func (i *Index) setupGitForOrktree(w *state.Orktree, branch, from, upper string)
 }
 
 // Copies the .git gitfile from the no-checkout worktree directory
-// into upper. this ensures git commands inside the merged overlay path track the
+// into upper. This ensures git commands inside the merged overlay path track the
 // correct branch rather than the lowerdir's branch.
 func seedGitFile(treeDir, upper string) error {
 	gitFileData, err := os.ReadFile(filepath.Join(treeDir, ".git"))
@@ -513,6 +520,57 @@ func seedGitFile(treeDir, upper string) error {
 		return fmt.Errorf("seeding .git into overlay upper: %w", err)
 	}
 	return nil
+}
+
+// Seeds submodule .git gitfiles from lowerDir into upper, rewriting any relative
+// gitdir paths to absolute ones. This is necessary because submodule .git files
+// contain relative paths computed relative to the submodule's location in lowerDir.
+// When accessed through the overlayfs merged view (which sits at a different
+// directory depth), those relative paths would resolve to the wrong location.
+func seedSubmoduleGitFiles(lowerDir, upper string) error {
+	return filepath.WalkDir(lowerDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			// Skip .git directories — we only want .git gitfiles (submodule pointers),
+			// not the actual git object stores.
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() != ".git" {
+			return nil
+		}
+		// Skip the root-level .git file (already handled by seedGitFile).
+		if filepath.Dir(path) == lowerDir {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("reading submodule git pointer %s: %w", path, err)
+		}
+		content := strings.TrimSpace(string(data))
+		if !strings.HasPrefix(content, "gitdir: ") {
+			return nil
+		}
+		gitdirPath := strings.TrimPrefix(content, "gitdir: ")
+		// Resolve relative gitdir paths to absolute so they remain valid from the
+		// merged view, which lives at a different directory depth than lowerDir.
+		if !filepath.IsAbs(gitdirPath) {
+			gitdirPath = filepath.Clean(filepath.Join(filepath.Dir(path), gitdirPath))
+		}
+		rel, err := filepath.Rel(lowerDir, path)
+		if err != nil {
+			return err
+		}
+		dest := filepath.Join(upper, rel)
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return fmt.Errorf("creating submodule dir in overlay upper: %w", err)
+		}
+		return os.WriteFile(dest, []byte("gitdir: "+gitdirPath+"\n"), 0o644)
+	})
 }
 
 // Removes empty directories from path up to (but not including) stopAt.
