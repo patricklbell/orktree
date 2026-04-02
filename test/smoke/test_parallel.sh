@@ -42,5 +42,5 @@ git merge branch-a --no-edit
 assert_file_exists "$REPO_DIR/parallel_a.txt"
 
 # Clean up
-"$ORKTREE" rm branch-a --force
+"$ORKTREE" rm branch-a
 "$ORKTREE" rm branch-b --force
