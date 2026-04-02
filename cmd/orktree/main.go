@@ -250,8 +250,11 @@ func cmdSwitch(args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "Switched to source root\n")
 		fmt.Fprintf(os.Stderr, "  path      : %s\n", mgr.SourceRoot())
+		// NOTE: fires whenever stderr is a tty, even if the user explicitly
+		// called `command orktree switch` to bypass the wrapper — acceptable
+		// false-positive for a diagnostic hint.
 		if isTerminal(os.Stderr.Fd()) {
-			fmt.Fprintf(os.Stderr, "\nhint: shell function not active — working directory unchanged\n      source completions/orktree.bash (bash) or completions/orktree.zsh (zsh)\n")
+			fmt.Fprintf(os.Stderr, "\nhint: shell function not active — working directory unchanged\n      see 'Shell-Integration' docs or 'orktree help' to enable automatic cd\n")
 		}
 		return nil
 	}
@@ -273,8 +276,11 @@ func cmdSwitch(args []string) error {
 
 	fmt.Fprintf(os.Stderr, "Switched to orktree %q\n", info.Branch)
 	fmt.Fprintf(os.Stderr, "  path      : %s\n", info.MergedPath)
+	// NOTE: fires whenever stderr is a tty, even if the user explicitly
+	// called `command orktree switch` to bypass the wrapper — acceptable
+	// false-positive for a diagnostic hint.
 	if isTerminal(os.Stderr.Fd()) {
-		fmt.Fprintf(os.Stderr, "\nhint: shell function not active — working directory unchanged\n      source completions/orktree.bash (bash) or completions/orktree.zsh (zsh)\n")
+		fmt.Fprintf(os.Stderr, "\nhint: shell function not active — working directory unchanged\n      see 'Shell-Integration' docs or 'orktree help' to enable automatic cd\n")
 	}
 	return nil
 }
