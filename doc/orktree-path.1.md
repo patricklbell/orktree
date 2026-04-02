@@ -52,6 +52,10 @@ Use in a script:
 
     cd "$(orktree path fix-parser)"
 
+Mount in a container:
+
+    wspath="$(orktree path fix-parser)" && docker run --rm -it -v "$wspath":/workspace myimage
+
 # SEE ALSO
 
 **orktree**(1), **orktree-switch**(1)

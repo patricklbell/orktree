@@ -6,3 +6,4 @@ Welcome to the orktree wiki — guides for advanced usage and integration.
 
 - [Build Tool Integration](Build-Tool-Integration.md) — working with CMake and other build tools in orktrees
 - [Shell Integration](Shell-Integration.md) — setting up cd-on-switch for bash, zsh, fish, and POSIX sh
+- [Container Workflows](Container-Integration.md) — running orktrees in Docker, Podman, and devcontainers
