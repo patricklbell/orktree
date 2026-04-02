@@ -250,6 +250,9 @@ func cmdSwitch(args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "Switched to source root\n")
 		fmt.Fprintf(os.Stderr, "  path      : %s\n", mgr.SourceRoot())
+		if isTerminal(os.Stderr.Fd()) {
+			fmt.Fprintf(os.Stderr, "\nhint: shell function not active — working directory unchanged\n      source completions/orktree.bash (bash) or completions/orktree.zsh (zsh)\n")
+		}
 		return nil
 	}
 
@@ -270,6 +273,9 @@ func cmdSwitch(args []string) error {
 
 	fmt.Fprintf(os.Stderr, "Switched to orktree %q\n", info.Branch)
 	fmt.Fprintf(os.Stderr, "  path      : %s\n", info.MergedPath)
+	if isTerminal(os.Stderr.Fd()) {
+		fmt.Fprintf(os.Stderr, "\nhint: shell function not active — working directory unchanged\n      source completions/orktree.bash (bash) or completions/orktree.zsh (zsh)\n")
+	}
 	return nil
 }
 
