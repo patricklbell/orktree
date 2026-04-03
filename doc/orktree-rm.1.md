@@ -8,16 +8,19 @@ date: 2025
 
 # NAME
 
-orktree-rm - remove an orktree
+orktree-rm - remove one or more orktrees
 
 # SYNOPSIS
 
-**orktree rm** *branch* [**--force**]
+**orktree rm** *branch*... [**--force**] [**--ignore-untracked**] [**--ignore-tracked**]
 
 # DESCRIPTION
 
-Remove the orktree for the given branch. This unmounts the overlay,
-deregisters the git worktree, and deletes all state.
+Remove the orktrees for the given branches. For each orktree this unmounts
+the overlay, deregisters the git worktree, and deletes all local state.
+
+**Deleting an orktree does not delete any commits.** The branch and its
+commits remain in git history and can be switched to again at any time.
 
 If the orktree is clean (no changed files, no unmerged commits), it is
 removed immediately without prompting.
@@ -49,6 +52,11 @@ In a non-interactive environment (no TTY), the assessment is printed
 followed by a message to pass **--force** to remove without
 confirmation, and the command exits with an error.
 
+When multiple branches are specified, each is processed in order.
+Errors for individual orktrees are reported inline and processing
+continues; a summary error is returned at the end if any removals
+failed.
+
 ## Dependents
 
 If other orktrees depend on this one as their base layer (stacked via
@@ -58,13 +66,22 @@ base.
 
 # OPTIONS
 
-*branch*
-: The branch name, orktree ID, or unique prefix of the orktree to remove.
+*branch*...
+: One or more branch names, orktree IDs, or unique prefixes of the orktrees to remove.
 
 **--force**, **-f**
 : Skip the safety assessment and confirmation prompt, removing the
-  orktree immediately. Does **not** override the dependents check —
+  orktree immediately. Implies **--ignore-untracked** and
+  **--ignore-tracked**. Does **not** override the dependents check —
   orktrees with dependents are always refused.
+
+**--ignore-untracked**
+: Do not treat untracked files as a reason to prompt for confirmation.
+  Untracked files in the overlay will still be deleted.
+
+**--ignore-tracked**
+: Do not treat modified tracked files as a reason to prompt for
+  confirmation. Tracked changes in the overlay will still be deleted.
 
 # EXAMPLES
 
@@ -72,9 +89,17 @@ Remove a clean orktree (no prompt):
 
     orktree rm fix-parser
 
+Remove multiple orktrees at once:
+
+    orktree rm branch-a branch-b branch-c
+
 Force removal, skipping the interactive assessment:
 
     orktree rm fix-parser --force
+
+Remove even if there are untracked files (but still prompt for tracked changes):
+
+    orktree rm fix-parser --ignore-untracked
 
 # SEE ALSO
 

@@ -326,6 +326,23 @@ func (c *RemoveCheck) IsClean() bool {
 	return len(c.Dependents) == 0 && c.TrackedTotal == 0 && c.UntrackedTotal == 0 && c.UnmergedTotal == 0
 }
 
+// IsCleanWith reports whether the orktree has no uncommitted work that would
+// block removal given the specified ignore flags. ignoreUntracked skips the
+// untracked-files check; ignoreTracked skips the tracked-dirty-files check.
+// Unmerged commits and dependents are never ignored.
+func (c *RemoveCheck) IsCleanWith(ignoreUntracked, ignoreTracked bool) bool {
+	if len(c.Dependents) > 0 || c.UnmergedTotal > 0 {
+		return false
+	}
+	if !ignoreTracked && c.TrackedTotal > 0 {
+		return false
+	}
+	if !ignoreUntracked && c.UntrackedTotal > 0 {
+		return false
+	}
+	return true
+}
+
 // reports whether removal should be refused regardless of user confirmation.
 // Currently this is true only when other orktrees depend on this one as a base layer.
 func (c *RemoveCheck) HasBlockers() bool {

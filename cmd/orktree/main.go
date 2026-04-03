@@ -442,17 +442,38 @@ func formatAssessment(rc *orktree.RemoveCheck) string {
 
 func cmdRm(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: orktree rm <branch> [--force]")
+		return fmt.Errorf("usage: orktree rm <branch>... [--force] [--ignore-untracked] [--ignore-tracked]")
 	}
-	ref := args[0]
+
+	var branches []string
 	force := false
-	for i := 1; i < len(args); i++ {
+	ignoreUntracked := false
+	ignoreTracked := false
+
+	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--force", "-f":
 			force = true
+		case "--ignore-untracked":
+			ignoreUntracked = true
+		case "--ignore-tracked":
+			ignoreTracked = true
 		default:
-			return fmt.Errorf("unknown flag %q", args[i])
+			if strings.HasPrefix(args[i], "-") {
+				return fmt.Errorf("unknown flag %q", args[i])
+			}
+			branches = append(branches, args[i])
 		}
+	}
+
+	if len(branches) == 0 {
+		return fmt.Errorf("usage: orktree rm <branch>... [--force] [--ignore-untracked] [--ignore-tracked]")
+	}
+
+	// --force implies both scoped ignore flags.
+	if force {
+		ignoreUntracked = true
+		ignoreTracked = true
 	}
 
 	mgr, err := discoverFromCwd()
@@ -460,6 +481,26 @@ func cmdRm(args []string) error {
 		return err
 	}
 
+	// Single branch: preserve original error propagation behavior.
+	if len(branches) == 1 {
+		return rmOne(mgr, branches[0], force, ignoreUntracked, ignoreTracked)
+	}
+
+	// Multiple branches: run all, collect errors.
+	var errCount int
+	for _, ref := range branches {
+		if err := rmOne(mgr, ref, force, ignoreUntracked, ignoreTracked); err != nil {
+			fmt.Fprintf(os.Stderr, "orktree: rm %s: %v\n", ref, err)
+			errCount++
+		}
+	}
+	if errCount > 0 {
+		return fmt.Errorf("%d of %d orktree(s) could not be removed", errCount, len(branches))
+	}
+	return nil
+}
+
+func rmOne(mgr *orktree.Index, ref string, force, ignoreUntracked, ignoreTracked bool) error {
 	info, err := mgr.FindOrktree(ref)
 	if err != nil {
 		return err
@@ -480,16 +521,8 @@ func cmdRm(args []string) error {
 		return fmt.Errorf("cannot remove %q — has dependents", rc.Branch)
 	}
 
-	if force {
-		if err := mgr.RemoveOrktree(ref); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Name)
-		return nil
-	}
-
-	// Clean orktree — remove without prompt.
-	if rc.IsClean() {
+	// Skip all prompts when the orktree is clean enough given the ignore flags.
+	if rc.IsCleanWith(ignoreUntracked, ignoreTracked) {
 		if err := mgr.RemoveOrktree(ref); err != nil {
 			return err
 		}
@@ -502,9 +535,10 @@ func cmdRm(args []string) error {
 	fmt.Fprintln(os.Stderr, assessment)
 	fmt.Fprintln(os.Stderr)
 
-	// Determine default: Yes if only untracked/ignored files, No otherwise.
-	onlyMinor := rc.UnmergedTotal == 0 && rc.TrackedTotal == 0
-	defaultYes := onlyMinor
+	// Default Yes only when no "major" concerns remain after applying ignore flags.
+	// Unmerged commits and tracked changes (unless ignored) are major.
+	majorRemaining := rc.UnmergedTotal > 0 || (!ignoreTracked && rc.TrackedTotal > 0)
+	defaultYes := !majorRemaining
 
 	tty := isTerminal(os.Stdin.Fd()) && isTerminal(os.Stderr.Fd())
 	if !tty {
@@ -512,7 +546,7 @@ func cmdRm(args []string) error {
 		return fmt.Errorf("cannot confirm removal of %q — not a terminal", rc.Branch)
 	}
 
-	prompt := fmt.Sprintf("Remove orktree %q (%s)? This cannot be undone.", rc.Branch, rc.MergedPath)
+	prompt := fmt.Sprintf("Remove orktree %q (%s)? Commits on this branch are preserved in git history.", rc.Branch, rc.MergedPath)
 	if defaultYes {
 		fmt.Fprintf(os.Stderr, "%s [Y/n] ", prompt)
 	} else {
@@ -554,12 +588,12 @@ Usage:
   orktree <command> [flags]
 
 Commands:
-  switch  <branch> [--from <b>] [--no-git] [--name <n>]   Enter orktree (auto-creates)
-  switch  -                                                 Return to the source root
-  ls      [--quiet]                                         List orktrees with status and size
-  path    <branch> [--from <b>] [--no-git] [--name <n>]    Print workspace path (auto-creates)
-  rm      <branch> [--force]                                Remove orktree
-  doctor                                                    Runs the doctor to diagnose issues
+  switch  <branch> [--from <b>] [--no-git] [--name <n>]                   Enter orktree (auto-creates)
+  switch  -                                                                 Return to the source root
+  ls      [--quiet]                                                         List orktrees with status and size
+  path    <branch> [--from <b>] [--no-git] [--name <n>]                    Print workspace path (auto-creates)
+  rm      <branch>... [--force] [--ignore-untracked] [--ignore-tracked]    Remove orktree(s). Commits are preserved in git history.
+  doctor                                                                    Runs the doctor to diagnose issues
 
 Aliases:  sw → switch,  p → path,  list → ls,  remove → rm
 

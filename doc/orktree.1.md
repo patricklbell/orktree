@@ -35,10 +35,11 @@ no files are duplicated.
 **path** *branch* [**--from** *base*] [**--no-git**]
 : Print workspace path (auto-creates if absent).
 
-**rm** *branch* [**--force**]
-: Remove an orktree. Refuses removal if there are uncommitted overlay
-  changes, unmerged commits, or dependent orktrees. Use **--force** to
-  bypass safety checks.
+**rm** *branch*... [**--force**] [**--ignore-untracked**] [**--ignore-tracked**]
+: Remove one or more orktrees. Refuses removal if there are dependent
+  orktrees. Use **--force** to skip safety checks, or **--ignore-untracked**
+  / **--ignore-tracked** for finer-grained control. Commits are preserved in
+  git history.
 
 **doctor**
 : Check required and optional prerequisites and diagnose issues.

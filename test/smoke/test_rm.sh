@@ -8,7 +8,7 @@ cd "$REPO_DIR"
 ws=$("$ORKTREE" path to-remove)
 assert_dir_exists "$ws"
 
-"$ORKTREE" rm to-remove --force
+"$ORKTREE" rm to-remove --ignore-untracked
 
 output=$("$ORKTREE" ls --quiet 2>&1) || true
 if echo "$output" | grep -q "to-remove"; then

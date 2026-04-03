@@ -97,6 +97,111 @@ func TestRemoveCheck_IsClean(t *testing.T) {
 	}
 }
 
+func TestRemoveCheck_IsCleanWith(t *testing.T) {
+	tests := []struct {
+		name            string
+		rc              orktree.RemoveCheck
+		ignoreUntracked bool
+		ignoreTracked   bool
+		want            bool
+	}{
+		{
+			name: "empty_check_is_clean_with_any_flags",
+			rc:   orktree.RemoveCheck{},
+			want: true,
+		},
+		{
+			name:            "empty_check_is_clean_with_both_flags",
+			rc:              orktree.RemoveCheck{},
+			ignoreUntracked: true,
+			ignoreTracked:   true,
+			want:            true,
+		},
+		{
+			name: "has_dependents_never_clean",
+			rc:   orktree.RemoveCheck{Dependents: []string{"child"}},
+			want: false,
+		},
+		{
+			name:            "has_dependents_never_clean_with_both_flags",
+			rc:              orktree.RemoveCheck{Dependents: []string{"child"}},
+			ignoreUntracked: true,
+			ignoreTracked:   true,
+			want:            false,
+		},
+		{
+			name: "has_unmerged_commits_never_clean",
+			rc:   orktree.RemoveCheck{UnmergedTotal: 3},
+			want: false,
+		},
+		{
+			name:            "has_unmerged_commits_never_clean_with_both_flags",
+			rc:              orktree.RemoveCheck{UnmergedTotal: 3},
+			ignoreUntracked: true,
+			ignoreTracked:   true,
+			want:            false,
+		},
+		{
+			name:          "tracked_dirty_only_clean_when_ignore_tracked",
+			rc:            orktree.RemoveCheck{TrackedTotal: 2},
+			ignoreTracked: true,
+			want:          true,
+		},
+		{
+			name: "tracked_dirty_only_not_clean_when_not_ignored",
+			rc:   orktree.RemoveCheck{TrackedTotal: 2},
+			want: false,
+		},
+		{
+			name:            "untracked_dirty_only_clean_when_ignore_untracked",
+			rc:              orktree.RemoveCheck{UntrackedTotal: 4},
+			ignoreUntracked: true,
+			want:            true,
+		},
+		{
+			name: "untracked_dirty_only_not_clean_when_not_ignored",
+			rc:   orktree.RemoveCheck{UntrackedTotal: 4},
+			want: false,
+		},
+		{
+			name: "both_dirty_not_clean_with_no_flags",
+			rc:   orktree.RemoveCheck{TrackedTotal: 1, UntrackedTotal: 2},
+			want: false,
+		},
+		{
+			name:            "both_dirty_not_clean_with_only_ignore_untracked",
+			rc:              orktree.RemoveCheck{TrackedTotal: 1, UntrackedTotal: 2},
+			ignoreUntracked: true,
+			want:            false,
+		},
+		{
+			name:          "both_dirty_not_clean_with_only_ignore_tracked",
+			rc:            orktree.RemoveCheck{TrackedTotal: 1, UntrackedTotal: 2},
+			ignoreTracked: true,
+			want:          false,
+		},
+		{
+			name:            "both_dirty_clean_with_both_flags",
+			rc:              orktree.RemoveCheck{TrackedTotal: 1, UntrackedTotal: 2},
+			ignoreUntracked: true,
+			ignoreTracked:   true,
+			want:            true,
+		},
+		{
+			name: "only_ignored_dirty_is_always_clean",
+			rc:   orktree.RemoveCheck{IgnoredDirty: 7},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.rc.IsCleanWith(tt.ignoreUntracked, tt.ignoreTracked); got != tt.want {
+				t.Errorf("IsCleanWith(%v, %v) = %v, want %v", tt.ignoreUntracked, tt.ignoreTracked, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRemoveCheck_HasBlockers(t *testing.T) {
 	tests := []struct {
 		name string
