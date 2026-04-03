@@ -1,0 +1,50 @@
+version: 1
+
+agents:
+  warden:
+    description: Dispatch-only coordinator that fans out sandboxed orchestrators in parallel.
+    prompt: .opencode/agents/warden.agent.md
+    tools:
+      - read
+      - search
+      - spawn_orchestrator
+      - reap_stale_runs
+      - list_orchestrator_runs
+
+  orchestrator:
+    description: Task coordinator that runs worker/reviewer adversarial loops.
+    prompt: .opencode/agents/orchestrator.agent.md
+    tools:
+      - read
+      - search
+      - agent
+
+  worker:
+    description: Implementation agent for focused coding and testing tasks.
+    prompt: .opencode/agents/worker.agent.md
+    tools:
+      - read
+      - edit
+      - search
+      - execute
+
+  reviewer:
+    description: Independent quality gate that challenges worker outputs.
+    prompt: .opencode/agents/reviewer.agent.md
+    tools:
+      - read
+      - search
+      - execute
+
+tools:
+  spawn_orchestrator:
+    description: Create an isolated orktree+container run and launch one orchestrator task.
+    command: .opencode/tools/spawn_orchestrator.sh
+
+  reap_stale_runs:
+    description: Remove stale or finished orchestrator runs and temporary resources.
+    command: .opencode/tools/reap_stale_runs.sh
+
+  list_orchestrator_runs:
+    description: List active and recent orchestrator runs managed by warden.
+    command: .opencode/tools/list_runs.sh
