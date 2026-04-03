@@ -1,21 +1,6 @@
 # OpenCode Setup
 
-This directory contains the OpenCode configuration for parallel orchestration.
-
-- Agents in `.opencode/agents/`: `warden`, `orchestrator`, `worker`, `reviewer`.
-- `warden` is dispatch-only: it fans out independent tasks by provisioning orktree
-  branches and spawning orchestrators as OpenCode child sessions via the Task tool.
-- `orchestrator` runs the `worker` + `reviewer` adversarial loop until review passes.
-- `worker` and `reviewer` can be invoked directly when orchestration is unnecessary.
-
-## Entry points
-
-- Agent prompts + config (YAML frontmatter): `.opencode/agents/`
-- Custom tools (TypeScript): `.opencode/tools/*.ts`
-
 ## Custom tools
-
-All tools are implemented in TypeScript; there are no shell script delegates.
 
 - `spawn_orchestrator.ts`: provisions an isolated orktree branch for one task and
   records run metadata. Returns `{ run_id, branch, workspace_path }` for use in

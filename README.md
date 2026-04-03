@@ -96,7 +96,3 @@ make install   # installs to ~/.local by default (PREFIX=~/.local)
 make build test    # builds to build by default (OUT_DIR=build)
 make smoke         # end-to-end smoke tests (requires fuse-overlayfs)
 ```
-
-## Contributing
-
-We welcome contributions to orktree! If you'd like to contribute, please check out our [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines and best practices.
