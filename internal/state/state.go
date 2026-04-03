@@ -23,6 +23,9 @@ type Orktree struct {
 	ID string `json:"id"`
 	// Branch is the git branch name (or a human label when not in a git repo).
 	Branch string `json:"branch"`
+	// Name is the human-visible label used for directory paths.
+	// When empty (legacy state), Branch is used as the name.
+	Name string `json:"name,omitempty"`
 	// GitTreePath is the path to the registered git worktree directory.
 	// Empty when the orktree is not git-backed.
 	GitTreePath string `json:"git_tree_path,omitempty"`
@@ -35,6 +38,16 @@ type Orktree struct {
 	// was created zero-cost from another orktree.
 	LowerOrktreeBranch string    `json:"lower_orktree_branch,omitempty"`
 	CreatedAt          time.Time `json:"created_at"`
+}
+
+// EffectiveName returns the name used for directory paths.
+// Falls back to Branch when Name is empty so that legacy state files
+// (which predate the name field) continue to resolve correctly.
+func (w Orktree) EffectiveName() string {
+	if w.Name != "" {
+		return w.Name
+	}
+	return w.Branch
 }
 
 // Path to the orktree data directory that sits next to
@@ -130,10 +143,13 @@ func Init(sourceRoot string, isGitRepo bool) (*State, error) {
 }
 
 // Adds an orktree entry to cfg and saves state.
-func NewOrktree(cfg *State, branch string) (Orktree, error) {
+// name is the human-visible label used for directory paths; pass "" to default
+// to branch (preserving backward-compatible behaviour).
+func NewOrktree(cfg *State, branch, name string) (Orktree, error) {
 	w := Orktree{
 		ID:        newID(),
 		Branch:    branch,
+		Name:      name,
 		CreatedAt: time.Now().UTC(),
 	}
 	cfg.Orktrees = append(cfg.Orktrees, w)
@@ -149,6 +165,18 @@ func UpdateOrktree(cfg *State, w Orktree) error {
 		}
 	}
 	return fmt.Errorf("orktree %q not found", w.ID)
+}
+
+// RenameOrktree updates the Name field of the orktree with the given ID and saves.
+// The caller is responsible for validating newName and for moving the merged directory.
+func RenameOrktree(cfg *State, id, newName string) error {
+	for i, w := range cfg.Orktrees {
+		if w.ID == id {
+			cfg.Orktrees[i].Name = newName
+			return Save(cfg)
+		}
+	}
+	return fmt.Errorf("orktree %q not found", id)
 }
 
 // Removes the orktree entry with the given ID and saves.
@@ -174,7 +202,7 @@ func Dependents(cfg *State, branch string) []Orktree {
 	return deps
 }
 
-// Orktree matching ref by ID, branch name, or prefix.
+// Orktree matching ref by ID, branch name, name, or prefix.
 func FindOrktree(cfg *State, ref string) (Orktree, error) {
 	// Exact ID match.
 	for _, w := range cfg.Orktrees {
@@ -188,8 +216,14 @@ func FindOrktree(cfg *State, ref string) (Orktree, error) {
 			return w, nil
 		}
 	}
+	// Exact name match.
+	for _, w := range cfg.Orktrees {
+		if w.Name != "" && w.Name == ref {
+			return w, nil
+		}
+	}
 	// Use a map to deduplicate (an orktree could match both by ID prefix and
-	// branch prefix).
+	// branch/name prefix).
 	seen := make(map[string]Orktree)
 	for _, w := range cfg.Orktrees {
 		if len(ref) > 0 && len(w.ID) >= len(ref) && w.ID[:len(ref)] == ref {
@@ -197,6 +231,10 @@ func FindOrktree(cfg *State, ref string) (Orktree, error) {
 			continue
 		}
 		if len(ref) > 0 && len(w.Branch) >= len(ref) && w.Branch[:len(ref)] == ref {
+			seen[w.ID] = w
+			continue
+		}
+		if w.Name != "" && len(ref) > 0 && len(w.Name) >= len(ref) && w.Name[:len(ref)] == ref {
 			seen[w.ID] = w
 		}
 	}
@@ -219,13 +257,13 @@ func (c *State) GitTreeDir(w Orktree) string {
 }
 
 // Upper, work, and merged directory paths for w.
-// Branches containing "/" (e.g. "feature/my-branch") produce nested merged paths.
+// Names containing "/" (e.g. "feature/my-branch") produce nested merged paths.
 func (c *State) OverlayDirs(w Orktree) (upper, work, merged string) {
 	sib := SiblingDir(c.SourceRoot)
 	hidden := filepath.Join(sib, ".overlayfs", w.ID)
-	// filepath.FromSlash translates branches like "feature/my-branch" into
+	// filepath.FromSlash translates names like "feature/my-branch" into
 	// nested directories, matching how users expect them to appear.
-	merged = filepath.Join(sib, filepath.FromSlash(w.Branch))
+	merged = filepath.Join(sib, filepath.FromSlash(w.EffectiveName()))
 	return filepath.Join(hidden, "upper"), filepath.Join(hidden, "work"), merged
 }
 

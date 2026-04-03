@@ -37,20 +37,8 @@ internal/state/state_test.go ← state unit tests
 doc/*.1.md                   ← man page sources (pandoc markdown)
 test/smoke/                  ← end-to-end smoke tests (bash, require fuse-overlayfs)
 .opencode/                   ← OpenCode agents + custom tools for sandboxed orchestration
-scripts/orchestrator-*.sh    ← legacy session hook scripts used outside OpenCode
-docs/Parallel-*.md           ← high-level OpenCode orchestration documentation
 Makefile                     ← build, test, man page generation, install
 ```
-
-### OpenCode orchestration area
-
-- Minimal migration setup is four agents in `.opencode/opencode.yaml`: `warden`, `orchestrator`, `worker`, `reviewer`.
-- `warden` is **dispatch-only** and should fan out independent tasks with parallel `spawn_orchestrator` calls.
-- `orchestrator` coordinates a strict `worker` + `reviewer` adversarial loop until review passes.
-- `worker` and `reviewer` remain directly invokable for non-sandboxed or single-track workflows.
-- `.opencode/tools/*.sh` must remain executable (`chmod +x`) and safe under parallel invocation.
-- Spawned containers must stay credential-reduced: no host home mount, no network, no extra Linux capabilities.
-- Cleanup semantics are lossless by default: finished runs are preserved until TTL expiry; optional eager prune is `reap_stale_runs.sh --reap-finished`.
 
 ### Porcelain vs plumbing
 

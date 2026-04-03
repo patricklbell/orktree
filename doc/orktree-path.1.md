@@ -12,7 +12,7 @@ orktree-path - print orktree workspace path
 
 # SYNOPSIS
 
-**orktree path** *branch* [**--from** *base*] [**--no-git**]
+**orktree path** *branch* [**--from** *base*] [**--no-git**] [**--name** *name*]
 
 # DESCRIPTION
 
@@ -39,6 +39,11 @@ and mount paths.
 **--no-git**
 : Skip git worktree setup when auto-creating.
 
+**--name**, **-n** *name*
+: Human-visible label and workspace directory name for the orktree.
+  When omitted the branch name is used (preserving backward-compatible behaviour).
+  Only applied during creation; ignored when the orktree already exists.
+
 # EXAMPLES
 
 Print the workspace path:
@@ -52,6 +57,10 @@ Print the source root:
 Use in a script:
 
     cd "$(orktree path fix-parser)"
+
+Create with a custom name and print its path:
+
+    orktree path feature/PROJ-42-long-description --name proj-42
 
 Mount in a container (preserves git functionality):
 

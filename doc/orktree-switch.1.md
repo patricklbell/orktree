@@ -12,7 +12,7 @@ orktree-switch - enter an orktree workspace
 
 # SYNOPSIS
 
-**orktree switch** *branch* [**--from** *base*] [**--no-git**]
+**orktree switch** *branch* [**--from** *base*] [**--no-git**] [**--name** *name*]
 
 **orktree switch** **-**
 
@@ -40,6 +40,14 @@ also changes the working directory to the orktree workspace.
 **--no-git**
 : Skip git worktree setup. The orktree will not be associated with a git branch.
 
+**--name**, **-n** *name*
+: Human-visible label and workspace directory name for the orktree.
+  When omitted the branch name is used (preserving backward-compatible behaviour).
+  Use this flag to give a short alias to a long branch name, e.g.
+  `--name proj-42` for `feature/PROJ-42-very-long-description`.
+  The name is used for the workspace directory path and for all subsequent
+  `orktree switch`, `orktree path`, `orktree rm`, and `orktree ls` references.
+
 # EXAMPLES
 
 Create and enter an orktree from the source root (zero-cost):
@@ -53,6 +61,10 @@ Stack a new orktree on top of an existing one (zero-cost):
 Branch from a specific git tag:
 
     orktree switch hotfix --from v1.2.3
+
+Create an orktree with a short custom name for a long branch:
+
+    orktree switch feature/PROJ-42-long-description --name proj-42
 
 Return to the source root:
 

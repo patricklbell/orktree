@@ -81,7 +81,7 @@ func TestNewOrktree(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 
-	w, err := state.NewOrktree(cfg, "feature-x")
+	w, err := state.NewOrktree(cfg, "feature-x", "")
 	if err != nil {
 		t.Fatalf("NewOrktree: %v", err)
 	}
@@ -105,12 +105,40 @@ func TestNewOrktree(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// EffectiveName
+// ---------------------------------------------------------------------------
+
+func TestEffectiveName_defaults_to_branch(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, false)
+
+	w, _ := state.NewOrktree(cfg, "my-branch", "")
+	if got := w.EffectiveName(); got != "my-branch" {
+		t.Errorf("EffectiveName() = %q, want %q", got, "my-branch")
+	}
+}
+
+func TestEffectiveName_uses_name_when_set(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, false)
+
+	w, _ := state.NewOrktree(cfg, "feature/PROJ-123-long-description", "proj-123")
+	if got := w.EffectiveName(); got != "proj-123" {
+		t.Errorf("EffectiveName() = %q, want %q", got, "proj-123")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FindOrktree
+// ---------------------------------------------------------------------------
+
 func TestFindOrktreeByBranch(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 
-	w1, _ := state.NewOrktree(cfg, "main")
-	w2, _ := state.NewOrktree(cfg, "feature-y")
+	w1, _ := state.NewOrktree(cfg, "main", "")
+	w2, _ := state.NewOrktree(cfg, "feature-y", "")
 
 	// Find by exact branch name.
 	found, err := state.FindOrktree(cfg, "main")
@@ -135,8 +163,8 @@ func TestFindOrktreeByID(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 
-	w1, _ := state.NewOrktree(cfg, "alpha")
-	_, _ = state.NewOrktree(cfg, "beta")
+	w1, _ := state.NewOrktree(cfg, "alpha", "")
+	_, _ = state.NewOrktree(cfg, "beta", "")
 
 	// Find by exact ID.
 	found, err := state.FindOrktree(cfg, w1.ID)
@@ -158,7 +186,7 @@ func TestFindOrktreeIDPrefixMatch(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 
-	w, _ := state.NewOrktree(cfg, "")
+	w, _ := state.NewOrktree(cfg, "", "")
 	if len(w.ID) < 2 {
 		t.Skip("ID too short for prefix test")
 	}
@@ -173,10 +201,39 @@ func TestFindOrktreeIDPrefixMatch(t *testing.T) {
 	}
 }
 
+func TestFindOrktreeByName(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, false)
+
+	w, _ := state.NewOrktree(cfg, "feature/PROJ-999-very-long-description", "proj-999")
+
+	// Find by exact custom name.
+	found, err := state.FindOrktree(cfg, "proj-999")
+	if err != nil {
+		t.Fatalf("FindOrktree by name: %v", err)
+	}
+	if found.ID != w.ID {
+		t.Errorf("found wrong orktree by name")
+	}
+
+	// Find by name prefix.
+	found, err = state.FindOrktree(cfg, "proj")
+	if err != nil {
+		t.Fatalf("FindOrktree by name prefix: %v", err)
+	}
+	if found.ID != w.ID {
+		t.Errorf("found wrong orktree by name prefix")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UpdateOrktree / Dependents / RemoveOrktree
+// ---------------------------------------------------------------------------
+
 func TestUpdateOrktree(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
-	w, _ := state.NewOrktree(cfg, "old-branch")
+	w, _ := state.NewOrktree(cfg, "old-branch", "")
 
 	w.Branch = "new-branch"
 	if err := state.UpdateOrktree(cfg, w); err != nil {
@@ -193,17 +250,17 @@ func TestDependents(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 
-	base, _ := state.NewOrktree(cfg, "base")
-	child1, _ := state.NewOrktree(cfg, "child1")
+	base, _ := state.NewOrktree(cfg, "base", "")
+	child1, _ := state.NewOrktree(cfg, "child1", "")
 	child1.LowerOrktreeBranch = base.Branch
 	state.UpdateOrktree(cfg, child1)
 
-	child2, _ := state.NewOrktree(cfg, "child2")
+	child2, _ := state.NewOrktree(cfg, "child2", "")
 	child2.LowerOrktreeBranch = base.Branch
 	state.UpdateOrktree(cfg, child2)
 
 	// unrelated has no parent
-	state.NewOrktree(cfg, "unrelated")
+	state.NewOrktree(cfg, "unrelated", "") //nolint:errcheck
 
 	deps := state.Dependents(cfg, "base")
 	if len(deps) != 2 {
@@ -223,7 +280,7 @@ func TestDependents(t *testing.T) {
 func TestRemoveOrktree(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
-	w, _ := state.NewOrktree(cfg, "to-remove")
+	w, _ := state.NewOrktree(cfg, "to-remove", "")
 
 	if err := state.RemoveOrktree(cfg, w.ID); err != nil {
 		t.Fatalf("RemoveOrktree: %v", err)
@@ -238,24 +295,56 @@ func TestRemoveOrktree(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// OverlayDirs
+// ---------------------------------------------------------------------------
+
 func TestOverlayDirs(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := state.Init(dir, false)
 	sib := state.SiblingDir(dir)
 
-	// Simple branch: merged path should be <sibling>/<branch>
-	w1, _ := state.NewOrktree(cfg, "main")
+	// Simple branch, no custom name: merged path should be <sibling>/<branch>
+	w1, _ := state.NewOrktree(cfg, "main", "")
 	_, _, merged := cfg.OverlayDirs(w1)
 	wantMerged := filepath.Join(sib, "main")
 	if merged != wantMerged {
 		t.Errorf("merged = %q, want %q", merged, wantMerged)
 	}
 
-	// Branch with slash: merged path should be nested
-	w2, _ := state.NewOrktree(cfg, "feature/my-branch")
+	// Branch with slash, no custom name: merged path should be nested
+	w2, _ := state.NewOrktree(cfg, "feature/my-branch", "")
 	_, _, merged2 := cfg.OverlayDirs(w2)
 	wantMerged2 := filepath.Join(sib, "feature", "my-branch")
 	if merged2 != wantMerged2 {
 		t.Errorf("merged = %q, want %q", merged2, wantMerged2)
+	}
+}
+
+func TestOverlayDirs_custom_name(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, false)
+	sib := state.SiblingDir(dir)
+
+	// Custom name overrides the branch in the merged path.
+	w, _ := state.NewOrktree(cfg, "feature/PROJ-42-long-description", "proj-42")
+	_, _, merged := cfg.OverlayDirs(w)
+	wantMerged := filepath.Join(sib, "proj-42")
+	if merged != wantMerged {
+		t.Errorf("merged = %q, want %q", merged, wantMerged)
+	}
+}
+
+func TestOverlayDirs_custom_name_with_slash(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := state.Init(dir, false)
+	sib := state.SiblingDir(dir)
+
+	// A name that itself contains a slash produces nested directories.
+	w, _ := state.NewOrktree(cfg, "some-branch", "team/my-workspace")
+	_, _, merged := cfg.OverlayDirs(w)
+	wantMerged := filepath.Join(sib, "team", "my-workspace")
+	if merged != wantMerged {
+		t.Errorf("merged = %q, want %q", merged, wantMerged)
 	}
 }

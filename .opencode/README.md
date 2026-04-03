@@ -1,63 +1,58 @@
 # OpenCode Setup
 
-This directory contains the OpenCode migration for parallel sandbox orchestration.
+This directory contains the OpenCode configuration for parallel orchestration.
 
-## Minimal migration setup
-
-- Agents in `.opencode/opencode.yaml`: `warden`, `orchestrator`, `worker`, `reviewer`.
-- `warden` is dispatch-only and fans out independent work with parallel `spawn_orchestrator` calls.
-- `orchestrator` runs the `worker` + `reviewer` loop until review passes.
-- `worker` and `reviewer` can still be invoked directly when sandboxing is unnecessary.
+- Agents in `.opencode/agents/`: `warden`, `orchestrator`, `worker`, `reviewer`.
+- `warden` is dispatch-only: it fans out independent tasks by provisioning orktree
+  branches and spawning orchestrators as OpenCode child sessions via the Task tool.
+- `orchestrator` runs the `worker` + `reviewer` adversarial loop until review passes.
+- `worker` and `reviewer` can be invoked directly when orchestration is unnecessary.
 
 ## Entry points
 
-- Agent config: `.opencode/opencode.yaml`
-- Agent prompts: `.opencode/agents/`
-- Custom tools: `.opencode/tools/`
+- Agent prompts + config (YAML frontmatter): `.opencode/agents/`
+- Custom tools (TypeScript): `.opencode/tools/*.ts`
 
 ## Custom tools
 
-- `spawn_orchestrator.sh`: creates an isolated orktree + container and starts an orchestrator run
-- `list_runs.sh`: lists run state for the current repository
-- `cleanup_run.sh`: removes one run's container and temporary orktree
-- `reap_stale_runs.sh`: removes stale runs and expired finished runs
+All tools are implemented in TypeScript; there are no shell script delegates.
 
-These scripts are intended to be executable in-place:
+- `spawn_orchestrator.ts`: provisions an isolated orktree branch for one task and
+  records run metadata. Returns `{ run_id, branch, workspace_path }` for use in
+  the subsequent Task call. Does not launch an OpenCode session — that is done by
+  the warden via the Task tool.
+- `list_orchestrator_runs.ts`: lists run metadata for the current repository.
+- `reap_stale_runs.ts`: removes stale runs (TTL-expired) and their orktree branches.
 
-```sh
-chmod +x .opencode/tools/*.sh
+## Dispatch flow
+
+```
+warden
+ ├─ spawn_orchestrator(label="task-a") → { branch, workspace }
+ ├─ spawn_orchestrator(label="task-b") → { branch, workspace }
+ │   (both calls in parallel)
+ ├─ Task(orchestrator, prompt includes BRANCH + WORKSPACE for task-a)
+ └─ Task(orchestrator, prompt includes BRANCH + WORKSPACE for task-b)
+     (both Task calls in parallel → visible as child sessions in TUI)
 ```
 
-If your checkout did not preserve mode bits, invoke them with `bash`.
+Each orchestrator Task call creates a child session the user can navigate to with
+`<Leader>+Down` and cycle between with `Right`/`Left` in the OpenCode TUI.
 
-## Parallel execution
+## Isolation
 
-Every `spawn_orchestrator` call is independently keyed and state-isolated, so
-calls can run in parallel without lock contention (except a short image-build lock).
-
-`WARDEN_MAX_PARALLEL` can be set to cap dispatch fan-out. If unset, tools detect
-parallelism from host CPU count.
+Each task gets its own copy-on-write workspace via `orktree`. Only files actually
+modified consume extra disk space. The warden itself should be run inside a
+container if credential or filesystem isolation is required — no per-task container
+is created by the tooling.
 
 ## Cleanup policy
 
-- Explicit cleanup (`cleanup_run.sh`) removes container + orktree together by default.
-- Reaper cleanup removes container + orktree together for stale runs.
-- Finished runs are preserved until TTL expiry by default to keep output inspection lossless.
-- Use `--reap-finished` (or `WARDEN_REAP_FINISHED=1`) for eager finished-run cleanup.
+- `reap_stale_runs` removes runs whose TTL has elapsed (default: 4 hours).
+- Pass `reap_finished: true` to also remove runs that finished before their TTL.
+- Orktree branches are removed alongside their run records.
 
-## Credential isolation constraints
+## Environment
 
-Spawned containers are intentionally credential-reduced:
-
-- no host home-directory mount
-- `--network none`
-- `--cap-drop ALL`
-- `--security-opt no-new-privileges`
-- read-only root filesystem with tmpfs scratch space
-
-## Direct agent usage
-
-```sh
-opencode run --config .opencode/opencode.yaml --agent orchestrator --prompt "<task>"
-opencode run --config .opencode/opencode.yaml --agent worker --prompt "<task>"
-```
+- `WARDEN_STATE_DIR`: override the default state directory (`~/.orktree-warden`).
+- `WARDEN_MAX_PARALLEL`: cap dispatch fan-out (warden respects this in its prompt).

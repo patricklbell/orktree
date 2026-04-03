@@ -64,6 +64,7 @@ func CheckEnvironmentPrerequisites() []Prerequisite {
 // read-only snapshot of an orktree's metadata
 type OrktreeMetadata struct {
 	ID                 string
+	Name               string
 	Branch             string
 	MergedPath         string
 	Mounted            bool
@@ -140,6 +141,7 @@ func DiscoverIndex(startDir string) (*Index, error) {
 type CreateOrktreeOptions struct {
 	From  string // base branch, git ref, or existing orktree
 	NoGit bool   // skip git worktree registration (overlay-only)
+	Name  string // human-visible label and directory name; defaults to branch when empty
 }
 
 // adds a state entry, sets up git (unless NoGit), and mounts the overlay.
@@ -148,11 +150,22 @@ func (i *Index) CreateOrktree(branch string, opts CreateOrktreeOptions) (Orktree
 	if err := validateBranchName(branch); err != nil {
 		return OrktreeMetadata{}, err
 	}
+	if opts.Name != "" {
+		if err := validateName(opts.Name); err != nil {
+			return OrktreeMetadata{}, err
+		}
+	}
 	if _, err := state.FindOrktree(i.state, branch); err == nil {
 		return OrktreeMetadata{}, fmt.Errorf("orktree %q already exists", branch)
 	}
+	// When a custom name is provided also guard against duplicate names.
+	if opts.Name != "" {
+		if _, err := state.FindOrktree(i.state, opts.Name); err == nil {
+			return OrktreeMetadata{}, fmt.Errorf("an orktree named %q already exists", opts.Name)
+		}
+	}
 
-	w, err := state.NewOrktree(i.state, branch)
+	w, err := state.NewOrktree(i.state, branch, opts.Name)
 	if err != nil {
 		return OrktreeMetadata{}, err
 	}
@@ -193,8 +206,8 @@ func (i *Index) EnsureOrktree(branch string, opts CreateOrktreeOptions) (Orktree
 	if err != nil {
 		return i.CreateOrktree(branch, opts)
 	}
-	if opts.From != "" || opts.NoGit {
-		return OrktreeMetadata{}, fmt.Errorf("orktree %q already exists; --from and --no-git are only used during creation", branch)
+	if opts.From != "" || opts.NoGit || opts.Name != "" {
+		return OrktreeMetadata{}, fmt.Errorf("orktree %q already exists; --from, --no-git, and --name are only used during creation", branch)
 	}
 	if err := i.ensureMountedWithAncestors(w, make(map[string]bool)); err != nil {
 		return OrktreeMetadata{}, err
@@ -230,6 +243,64 @@ func (i *Index) ListOrktreesUpperDirFiles(branch string, limit int) (files []str
 	upper, _, _ := i.state.OverlayDirs(w)
 
 	return overlay.DirtyUpperFiles(upper, i.state.MountPath(w), limit)
+}
+
+// ---------------------------------------------------------------------------
+// Rename
+// ---------------------------------------------------------------------------
+
+// RenameOrktree changes the human-visible label (name) of the orktree identified
+// by ref (branch, name, ID or prefix). The new name is validated, checked for
+// conflicts, and the merged directory on disk is moved to its new location.
+// The branch is left untouched.
+func (i *Index) RenameOrktree(ref, newName string) error {
+	if err := validateName(newName); err != nil {
+		return err
+	}
+	if newName == "" {
+		return fmt.Errorf("new name must not be empty")
+	}
+
+	w, err := state.FindOrktree(i.state, ref)
+	if err != nil {
+		return err
+	}
+
+	// Reject if another orktree already carries newName (exact match).
+	for _, other := range i.state.Orktrees {
+		if other.ID == w.ID {
+			continue
+		}
+		if other.EffectiveName() == newName {
+			return fmt.Errorf("an orktree named %q already exists", newName)
+		}
+	}
+
+	oldMerged := func() string { _, _, m := i.state.OverlayDirs(w); return m }()
+
+	// Build a temporary Orktree with the new name to derive the new merged path
+	// without modifying state yet — so failures leave state intact.
+	newW := w
+	newW.Name = newName
+	newMerged := func() string { _, _, m := i.state.OverlayDirs(newW); return m }()
+
+	if err := os.MkdirAll(filepath.Dir(newMerged), 0o755); err != nil {
+		return fmt.Errorf("creating parent directory for renamed orktree: %w", err)
+	}
+	if err := os.Rename(oldMerged, newMerged); err != nil {
+		return fmt.Errorf("moving orktree directory: %w", err)
+	}
+
+	if err := state.RenameOrktree(i.state, w.ID, newName); err != nil {
+		// Best-effort rollback: try to move the directory back.
+		os.Rename(newMerged, oldMerged) //nolint:errcheck
+		return fmt.Errorf("updating state: %w", err)
+	}
+
+	// Clean up empty ancestor directories left by the old merged path.
+	cleanEmptyAncestors(filepath.Dir(oldMerged), state.SiblingDir(i.state.SourceRoot))
+
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +473,21 @@ func validateBranchName(name string) error {
 	cleaned := filepath.Clean(name)
 	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
 		return fmt.Errorf("branch name %q would escape the orktree directory", name)
+	}
+	return nil
+}
+
+// validateName checks that a custom orktree name is safe to use as a
+// filesystem path component. The rules mirror validateBranchName — empty is
+// allowed here because callers only invoke validateName when a non-empty name
+// has been explicitly supplied.
+func validateName(name string) error {
+	if strings.ContainsRune(name, 0) {
+		return fmt.Errorf("orktree name contains invalid characters")
+	}
+	cleaned := filepath.Clean(name)
+	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
+		return fmt.Errorf("orktree name %q would escape the orktree directory", name)
 	}
 	return nil
 }
@@ -604,6 +690,7 @@ func (i *Index) createOrktreeInfo(w state.Orktree) (OrktreeMetadata, error) {
 	}
 	return OrktreeMetadata{
 		ID:                 w.ID,
+		Name:               w.EffectiveName(),
 		Branch:             w.Branch,
 		MergedPath:         merged,
 		Mounted:            mounted,

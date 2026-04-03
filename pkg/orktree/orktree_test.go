@@ -115,3 +115,97 @@ func TestRemoveCheck_HasBlockers(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Named orktrees
+// ---------------------------------------------------------------------------
+
+func TestCreateOrktree_named(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := orktree.CreateIndex(dir)
+	if err != nil {
+		t.Fatalf("CreateIndex: %v", err)
+	}
+
+	info, err := idx.CreateOrktree("feature/PROJ-42-long-description",
+		orktree.CreateOrktreeOptions{NoGit: true, Name: "proj-42"})
+	if err != nil {
+		t.Fatalf("CreateOrktree: %v", err)
+	}
+	t.Cleanup(func() { idx.RemoveOrktree(info.Name) }) //nolint:errcheck
+
+	if info.Name != "proj-42" {
+		t.Errorf("Name = %q, want %q", info.Name, "proj-42")
+	}
+	if info.Branch != "feature/PROJ-42-long-description" {
+		t.Errorf("Branch = %q, want %q", info.Branch, "feature/PROJ-42-long-description")
+	}
+
+	sib := filepath.Join(filepath.Dir(dir), filepath.Base(dir)+".orktree")
+	wantPath := filepath.Join(sib, "proj-42")
+	if info.MergedPath != wantPath {
+		t.Errorf("MergedPath = %q, want %q", info.MergedPath, wantPath)
+	}
+}
+
+func TestCreateOrktree_named_defaults_to_branch(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := orktree.CreateIndex(dir)
+	if err != nil {
+		t.Fatalf("CreateIndex: %v", err)
+	}
+
+	info, err := idx.CreateOrktree("my-branch", orktree.CreateOrktreeOptions{NoGit: true})
+	if err != nil {
+		t.Fatalf("CreateOrktree: %v", err)
+	}
+	t.Cleanup(func() { idx.RemoveOrktree(info.Name) }) //nolint:errcheck
+
+	// When no Name is supplied the effective name falls back to the branch.
+	if info.Name != "my-branch" {
+		t.Errorf("Name = %q, want %q", info.Name, "my-branch")
+	}
+}
+
+func TestFindOrktree_by_name(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := orktree.CreateIndex(dir)
+	if err != nil {
+		t.Fatalf("CreateIndex: %v", err)
+	}
+
+	created, err := idx.CreateOrktree("feature/PROJ-99", orktree.CreateOrktreeOptions{NoGit: true, Name: "proj-99"})
+	if err != nil {
+		t.Fatalf("CreateOrktree: %v", err)
+	}
+	t.Cleanup(func() { idx.RemoveOrktree(created.Name) }) //nolint:errcheck
+
+	// Can look up by custom name.
+	meta, err := idx.FindOrktree("proj-99")
+	if err != nil {
+		t.Fatalf("FindOrktree by name: %v", err)
+	}
+	if meta.Branch != "feature/PROJ-99" {
+		t.Errorf("Branch = %q, want %q", meta.Branch, "feature/PROJ-99")
+	}
+}
+
+func TestCreateOrktree_duplicate_name_rejected(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := orktree.CreateIndex(dir)
+	if err != nil {
+		t.Fatalf("CreateIndex: %v", err)
+	}
+
+	created, err := idx.CreateOrktree("branch-a", orktree.CreateOrktreeOptions{NoGit: true, Name: "shared-name"})
+	if err != nil {
+		t.Fatalf("first CreateOrktree: %v", err)
+	}
+	t.Cleanup(func() { idx.RemoveOrktree(created.Name) }) //nolint:errcheck
+
+	// Second orktree with the same custom name must be rejected.
+	_, err = idx.CreateOrktree("branch-b", orktree.CreateOrktreeOptions{NoGit: true, Name: "shared-name"})
+	if err == nil {
+		t.Fatal("expected error for duplicate name, got nil")
+	}
+}
