@@ -41,7 +41,8 @@ shopt -s nullglob
 for run_file in "${RUNS_DIR}"/*.json; do
   container_name=$(jq -r '.container_name' "$run_file")
   status="finished"
-  if docker inspect -f '{{.State.Running}}' "$container_name" >/dev/null 2>&1; then
+  running_state=$(docker inspect -f '{{.State.Running}}' "$container_name" 2>/dev/null || true)
+  if [[ "$running_state" == "true" ]]; then
     status="running"
   fi
   row=$(jq --arg status "$status" '. + {status:$status}' "$run_file")

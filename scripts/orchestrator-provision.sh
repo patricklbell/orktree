@@ -60,7 +60,8 @@ if [[ -f "$STATE_FILE" ]]; then
   WORKSPACE=$(jq -r '.workspace_path' "$STATE_FILE")
   BRANCH=$(jq -r '.branch' "$STATE_FILE")
   # Make sure the container is still running.
-  if docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" >/dev/null 2>&1; then
+  running_state=$(docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || true)
+  if [[ "$running_state" == "true" ]]; then
     emit_context "$WORKSPACE" "$BRANCH"
     exit 0
   fi

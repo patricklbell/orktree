@@ -62,7 +62,8 @@ for run_file in "${RUNS_DIR}"/*.json; do
   fi
 
   running=0
-  if docker inspect -f '{{.State.Running}}' "$container_name" >/dev/null 2>&1; then
+  running_state=$(docker inspect -f '{{.State.Running}}' "$container_name" 2>/dev/null || true)
+  if [[ "$running_state" == "true" ]]; then
     running=1
   fi
 
