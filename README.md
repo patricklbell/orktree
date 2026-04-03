@@ -1,18 +1,22 @@
 # orktree
 
-Git worktrees without file duplication.
+Instant Git worktrees using an overlay filesystem - no file duplication or disk bloat.
 
-[Git worktrees](https://git-scm.com/docs/git-worktree) are a powerful feature which allow you to work in parallel on different
-tasks. Unfortunately, when you create a worktree it duplicates every file in the
-checkout. `orktree` pairs a git worktree with a fuse-overlayfs CoW layer
-so **only your changes** take up disk space.
+## Example: git source repository
+
+| Command             | Time      | Disk Usage |
+|---------------------|-----------|------------|
+| `git worktree add`  | 0.348 s   | 40 MB      |
+| `orktree sw`        | 0.038 s   | 56 B       |
+
+Note: `orktree` creation time and initial disk usage are **independent** of repository size.
 
 ## Installation
 
 ### Package install (recommended)
 
-Download the appropriate package for your distribution and arch from the
-[releases](https://github.com/patricklbell/orktree/releases) page.
+Download the appropriate package for your distribution and arhictecture (x86_64/amd64 for non-ARM chips) from the
+[releases](https://github.com/patricklbell/orktree/releases) page. 
 
 ### From Source
 
@@ -62,10 +66,10 @@ See the [wiki](doc/Home.md) for tips on how to use orktree with existing tools.
 
 ### Prerequisites
 
-| Dependency         | Why                                       | Install                                                     |
-|--------------------|-------------------------------------------|-------------------------------------------------------------|
-| **fuse-overlayfs** | rootless copy-on-write overlay filesystem | `sudo apt-get install fuse-overlayfs` (or `dnf` / `pacman`) |
-| **git**            | worktree management                       | `sudo apt-get install git` (or your package manager)        |
+| Dependency         | Why                          | Install (Fedora)                  |
+|--------------------|------------------------------|-----------------------------------|
+| **git**            | worktrees                    | `sudo dnf install git`            |
+| **fuse-overlayfs** | user mode overlay filesystem | `sudo dnf install fuse-overlayfs` |
 
 After installing, ensure your user is in the required groups (run once, then log out/in):
 
@@ -77,7 +81,7 @@ After installing, ensure your user is in the required groups (run once, then log
 
 | Setting              | Why                                                      | Fix                                                      |
 |----------------------|----------------------------------------------------------|----------------------------------------------------------|
-| `user_allow_other`   | let Docker/Podman access orktree mounts (see [Container Workflows](doc/Container-Integration.md)) | `echo 'user_allow_other' \| sudo tee -a /etc/fuse.conf` |
+| `user_allow_other`   | let Docker/Podman access orktrees (see [Container Workflows](doc/Container-Integration.md)) | `echo 'user_allow_other' \| sudo tee -a /etc/fuse.conf` |
 
 Run `orktree doctor` to verify all prerequisites.
 
@@ -88,7 +92,7 @@ Requires [Go](https://go.dev/dl/) 1.23+, [pandoc](https://pandoc.org/) and [make
 ```sh
 git clone https://github.com/patricklbell/orktree.git
 cd orktree
-make install   # installs to ~/.local by default (PREFIX=~/.local)
+make install       # installs to ~/.local by default (PREFIX=~/.local)
 ```
 
 ### Build and Test
