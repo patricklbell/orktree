@@ -521,6 +521,16 @@ func rmOne(mgr *orktree.Index, ref string, force, ignoreUntracked, ignoreTracked
 		return fmt.Errorf("cannot remove %q — has dependents", rc.Branch)
 	}
 
+	// --force was passed: skip the safety assessment and remove immediately.
+	// Dependents are still checked above — force does not bypass that.
+	if force {
+		if err := mgr.RemoveOrktree(ref); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Name)
+		return nil
+	}
+
 	// Skip all prompts when the orktree is clean enough given the ignore flags.
 	if rc.IsCleanWith(ignoreUntracked, ignoreTracked) {
 		if err := mgr.RemoveOrktree(ref); err != nil {
