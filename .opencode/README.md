@@ -2,6 +2,13 @@
 
 This directory contains the OpenCode migration for parallel sandbox orchestration.
 
+## Minimal migration setup
+
+- Agents in `.opencode/opencode.yaml`: `warden`, `orchestrator`, `worker`, `reviewer`.
+- `warden` is dispatch-only and fans out independent work with parallel `spawn_orchestrator` calls.
+- `orchestrator` runs the `worker` + `reviewer` loop until review passes.
+- `worker` and `reviewer` can still be invoked directly when sandboxing is unnecessary.
+
 ## Entry points
 
 - Agent config: `.opencode/opencode.yaml`
@@ -37,3 +44,20 @@ parallelism from host CPU count.
 - Reaper cleanup removes container + orktree together for stale runs.
 - Finished runs are preserved until TTL expiry by default to keep output inspection lossless.
 - Use `--reap-finished` (or `WARDEN_REAP_FINISHED=1`) for eager finished-run cleanup.
+
+## Credential isolation constraints
+
+Spawned containers are intentionally credential-reduced:
+
+- no host home-directory mount
+- `--network none`
+- `--cap-drop ALL`
+- `--security-opt no-new-privileges`
+- read-only root filesystem with tmpfs scratch space
+
+## Direct agent usage
+
+```sh
+opencode run --config .opencode/opencode.yaml --agent orchestrator --prompt "<task>"
+opencode run --config .opencode/opencode.yaml --agent worker --prompt "<task>"
+```

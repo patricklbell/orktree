@@ -44,10 +44,13 @@ Makefile                     ← build, test, man page generation, install
 
 ### OpenCode orchestration area
 
-- `.opencode/agents/warden.agent.md` is **dispatch-only**. It should only fan out sandboxed orchestrators and report run state.
-- `.opencode/agents/orchestrator.agent.md` coordinates a strict `worker` + `reviewer` adversarial loop.
+- Minimal migration setup is four agents in `.opencode/opencode.yaml`: `warden`, `orchestrator`, `worker`, `reviewer`.
+- `warden` is **dispatch-only** and should fan out independent tasks with parallel `spawn_orchestrator` calls.
+- `orchestrator` coordinates a strict `worker` + `reviewer` adversarial loop until review passes.
+- `worker` and `reviewer` remain directly invokable for non-sandboxed or single-track workflows.
 - `.opencode/tools/*.sh` must remain executable (`chmod +x`) and safe under parallel invocation.
-- Cleanup semantics are intentionally lossless by default: finished runs are preserved until TTL expiry unless eager cleanup is explicitly requested.
+- Spawned containers must stay credential-reduced: no host home mount, no network, no extra Linux capabilities.
+- Cleanup semantics are lossless by default: finished runs are preserved until TTL expiry; optional eager prune is `reap_stale_runs.sh --reap-finished`.
 
 ### Porcelain vs plumbing
 

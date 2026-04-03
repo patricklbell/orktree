@@ -3,6 +3,12 @@
 This repository now supports a parallel, sandbox-first orchestration model using
 OpenCode.
 
+## Minimal OpenCode setup
+
+- Four agents in `.opencode/opencode.yaml`: `warden`, `orchestrator`, `worker`, `reviewer`.
+- Core custom tool for fan-out: `spawn_orchestrator`.
+- Lifecycle tools: `list_orchestrator_runs`, `reap_stale_runs`.
+
 ## High-level model
 
 1. User asks `warden` for one or many tasks.
@@ -52,10 +58,19 @@ Use eager finished-run cleanup only when requested:
 .opencode/tools/reap_stale_runs.sh --reap-finished
 ```
 
+This flag is the optional eager prune mode; default behavior remains lossless.
+
 ## Direct mode is still available
 
 - Users can invoke `orchestrator` directly when sandboxing is not required.
 - Users can invoke `worker` directly for standard single-agent work.
+
+Example direct calls:
+
+```sh
+opencode run --config .opencode/opencode.yaml --agent orchestrator --prompt "<task>"
+opencode run --config .opencode/opencode.yaml --agent worker --prompt "<task>"
+```
 
 ## Example
 
