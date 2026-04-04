@@ -1,12 +1,12 @@
 # orktree
 
-Instant Git worktrees using an overlay filesystem - no file duplication or disk bloat.
+Instant copy-on-write Git worktrees via overlay filesystem.
 
-## Example: git source repository
+## Benchmark: git source repository
 
 | Command             | Time      | Disk Usage |
 |---------------------|-----------|------------|
-| `git worktree add`  | 0.348 s   | 40 MB      |
+| `git worktree add`  | 0.348 s   | 40 MB      |
 | `orktree add`       | 0.038 s   | 56 B       |
 
 Note: `orktree` creation time and initial disk usage are **independent** of repository size.
@@ -15,8 +15,8 @@ Note: `orktree` creation time and initial disk usage are **independent** of repo
 
 ### Package install (recommended)
 
-Download the appropriate package for your distribution and arhictecture (x86_64/amd64 for non-ARM chips) from the
-[releases](https://github.com/patricklbell/orktree/releases) page. 
+Download the appropriate package for your distribution and architecture (x86_64/amd64 for non-ARM chips) from the
+[releases](https://github.com/patricklbell/orktree/releases) page.
 
 ### From Source
 
@@ -26,39 +26,19 @@ Download the appropriate package for your distribution and arhictecture (x86_64/
 
 ```sh
 cd /path/to/your/repo
-
-# Create an orktree on a new branch and cd into it
-cd "$(orktree add ../feature-x)"
-
-# Create an orktree stacked on an existing orktree (you can work in parallel on feature-x-variant)
-cd "$(orktree add ../feature-x-variant feature-x)"
-
-# List orktrees
-orktree ls
-
-# Remove orktree (safe)
-orktree rm feature-x-variant
+orktree add ../feature-x               # create orktree next to repo
+orktree add ../variant feature-x        # stack: variant sees feature-x files, changes are isolated
+orktree ls                              # list orktrees
+orktree rm feature-x variant            # remove orktrees
 ```
 
 ### How it works
 
-By default `orktree add` does the following: register a new git worktree and
-mount a fresh (empty) CoW layer on top of an existing checkout.
-
-```
-source root (master checkout)
-  └─ feature-x  [upper: your changes only, lowerdir: source root]
-       └─ feature-x-variant  [upper: empty, lowerdir: feature-x/merged]
-```
-
-You can pass a *commit-ish* argument to `orktree add` when you need to branch
-from a specific git commit or stack on an existing orktree. If the *commit-ish*
-isn't already present in an existing orktree or the source root then orktree
-incurs the storage of a conventional `git worktree add`.
+`orktree add` registers a git worktree then mounts a copy-on-write fuse-overlayfs layer on top of the existing checkout. Only changed files consume extra disk space — everything else is shared read-only from the lower layer.
 
 ### More information
 
-See the [wiki](doc/Home.md) for tips on how to use orktree with existing tools.
+See the [wiki](doc/Home.md) for guides on shell integration, containers, build tools, and more.
 
 ## Developer instructions
 

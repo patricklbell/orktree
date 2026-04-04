@@ -14,10 +14,10 @@ only files you actually modify consume extra disk space.
 ```
 <repo-parent>/
   <repo-name>/          ← git checkout (work here)
-  <repo-name>.orktree/  ← all orktree data (gitignored)
+  <repo-name>.orktree/  ← orktree data
     state.json
-    .overlayfs/<orktree-id>/tree|upper|work
-    <branch-name>/       ← merged view — cd here to work on a branch
+    .overlayfs/<orktree-id>/upper|work
+  <path>/               ← merged view + git worktree (wherever user specifies)
 ```
 
 State is stored in `<repo-name>.orktree/state.json` next to the repository root.

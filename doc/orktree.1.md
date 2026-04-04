@@ -16,21 +16,20 @@ orktree - git worktree + fuse-overlayfs manager
 
 # DESCRIPTION
 
-**orktree** creates isolated, copy-on-write workspaces from a git repository.
-Each orktree is a git branch paired with a fuse-overlayfs overlay so that
-only files you actually modify consume extra disk space.
+**orktree** creates isolated, copy-on-write workspaces from a git
+repository. Each orktree is a git worktree paired with a fuse-overlayfs
+overlay so that only files you actually modify consume extra disk space.
 
-Creating a new orktree is **zero-cost** by default: the existing checkout
-(or another orktree's merged view) is used as the overlayfs lowerdir —
-no files are duplicated.
+The merged overlay path **is** the git worktree path. Standard git
+commands, **git worktree list**, **git worktree lock/unlock**, and
+**git worktree prune/repair** all work alongside orktree without
+special configuration.
 
 # COMMANDS
 
-**add** *path* [*commit-ish*] [**--** *git-flags*...]
-: Create a new orktree at *path*. The branch name is derived from the basename
-  of *path*. If *commit-ish* matches an existing orktree, the new orktree is
-  stacked on top of it (zero-cost). Otherwise *commit-ish* is treated as a git
-  ref to branch from. Arguments after **--** are forwarded to `git worktree add`.
+**add** *path* [*commit-ish*] [**--**] [*git-worktree-add-flags*...]
+: Create a new orktree at *path*. Registers a git worktree, mounts a
+  CoW overlay, and returns with the workspace ready.
 
 **rm** *worktree*... [**--force**] [**--ignore-untracked**] [**--ignore-tracked**]
 : Remove one or more orktrees. Refuses removal if there are dependent
@@ -39,39 +38,56 @@ no files are duplicated.
   git history.
 
 **ls** [**--quiet**]
-: List all orktrees with status, size, and path.
+: List all orktrees with branch, status, size, and path.
 
 **path** *worktree*
-: Print the workspace path for an existing orktree. Does not auto-create or
-  auto-mount.
+: Print the merged view path for an existing orktree.
 
 **mount** *worktree*
-: Mount the overlay for an orktree (and its ancestors if stacked). No-op if
-  already mounted.
+: Mount the overlay for an existing orktree.
 
 **unmount** *worktree*
-: Unmount the overlay for an orktree.
+: Unmount the overlay for an existing orktree.
 
 **move** *worktree* *new-path*
-: Unmount, relocate, and remount an orktree at *new-path*.
+: Move an orktree to a new path.
 
 **doctor**
 : Check required and optional prerequisites and diagnose issues.
 
-# ZERO-COST ORKTREES
+**help**
+: Show usage information.
 
-By default, **orktree add** uses the existing checkout as the overlayfs
-lowerdir — no files are copied. Use a *commit-ish* that names an existing
-orktree to stack:
+# HOW IT WORKS
 
-    # Branch from source root (zero-cost)
-    orktree add ../fix-parser
+**orktree add** creates a git worktree then overlays a copy-on-write
+fuse-overlayfs layer on top. The existing checkout (or another
+orktree's merged view) becomes the overlay lowerdir. Only files you
+modify are stored in the upper directory — everything else is shared
+read-only from the lower layer.
 
-    # Stack on top of an existing orktree (zero-cost)
-    orktree add ../fix-parser-v2 fix-parser
+    myrepo/                          <- source root (git checkout)
+    myrepo.orktree/                  <- orktree data
+      state.json
+      .overlayfs/<id>/upper/         <- CoW changes
+      .overlayfs/<id>/work/          <- fuse-overlayfs internal
+    ../hotfix/                       <- merged view + git worktree
 
-    # Branch from an older commit
-    orktree add ../hotfix v1.2.3
+# STACKING
+
+When the *commit-ish* argument to **orktree add** matches an existing
+orktree, the new orktree is stacked on top of it — the existing
+orktree's merged path becomes the overlay lowerdir. This is zero-cost:
+no files are copied.
+
+    # Create an orktree from the source root
+    orktree add ../hotfix
+
+    # Stack on top of hotfix (zero-cost)
+    orktree add ../hotfix-v2 hotfix
+
+If *commit-ish* is not an existing orktree, it is treated as a git ref
+and passed to **git worktree add**.
 
 # PREREQUISITES
 
@@ -99,4 +115,4 @@ Optional:
 
 # SEE ALSO
 
-**orktree-add**(1), **orktree-ls**(1), **orktree-path**(1), **orktree-rm**(1), **git-worktree**(1), **fuse-overlayfs**(1)
+**orktree-add**(1), **orktree-rm**(1), **orktree-ls**(1), **orktree-path**(1), **orktree-mount**(1), **orktree-unmount**(1), **orktree-move**(1), **git-worktree**(1), **fuse-overlayfs**(1)

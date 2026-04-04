@@ -8,7 +8,7 @@ date: 2026
 
 # NAME
 
-orktree-move - relocate an orktree
+orktree-move - move an orktree to a new path
 
 # SYNOPSIS
 
@@ -16,9 +16,17 @@ orktree-move - relocate an orktree
 
 # DESCRIPTION
 
-Relocate the orktree identified by *worktree* to *new-path*. This
-unmounts the overlay, moves the git worktree registration, updates
-orktree state, and remounts the overlay at the new location.
+Move an orktree to a new location. Unmounts the overlay, moves the git
+worktree via **git worktree move**, updates internal state, and
+remounts at the new path.
+
+# OPTIONS
+
+*worktree*
+: The orktree to move, identified by branch name, path, or unique prefix.
+
+*new-path*
+: The new location for the merged view. Can be relative or absolute.
 
 # SEE ALSO
 

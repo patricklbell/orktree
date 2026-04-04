@@ -16,11 +16,13 @@ orktree-unmount - unmount an orktree overlay
 
 # DESCRIPTION
 
-Unmount the fuse-overlayfs overlay for the given orktree. No-op if not
-currently mounted.
+Unmount the fuse-overlayfs overlay for an existing orktree. Falls back
+to a lazy unmount if the filesystem is busy.
 
-**Warning:** Unmounting while processes are using the workspace may cause
-errors. The overlay may fall back to lazy unmount if the mount point is busy.
+# OPTIONS
+
+*worktree*
+: The orktree to unmount, identified by branch name, path, or unique prefix.
 
 # SEE ALSO
 

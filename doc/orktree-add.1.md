@@ -12,60 +12,55 @@ orktree-add - create a new orktree
 
 # SYNOPSIS
 
-**orktree add** *path* [*commit-ish*] [**--** *git-worktree-add-flags*...]
+**orktree add** *path* [*commit-ish*] [**--**] [*git-worktree-add-flags*...]
 
 # DESCRIPTION
 
-Create a new orktree at *path*. The branch name is derived from the basename
-of *path* (e.g., `../feature-x` creates branch `feature-x`).
+Create a new orktree at *path*. Registers a git worktree, creates
+overlay directories, and mounts the fuse-overlayfs layer. The
+workspace is ready to use immediately when the command returns.
 
-If *commit-ish* matches an existing orktree (by branch name, ID, or path
-basename), the new orktree is **stacked** on top of it: the parent orktree's
-merged view becomes the overlay lowerdir, and the branch is forked from the
-parent's branch. This is zero-cost — no files are copied.
-
-If *commit-ish* does not match an existing orktree, it is treated as a git
-ref (branch, tag, or commit). A new branch is created from that ref if the
-branch does not already exist.
-
-If *commit-ish* is omitted, the new branch is created from HEAD and the
-source root is used as the overlay lowerdir.
-
-Arguments after **--** are forwarded verbatim to `git worktree add`.
-
-The merged path is printed to stdout on success.
+The merged overlay path is the git worktree path — standard git
+commands work inside it without any special configuration.
 
 # OPTIONS
 
 *path*
-: Filesystem path where the orktree workspace will be created. Typically a
-  sibling directory of the source root, e.g. `../feature-x`.
+: Where the merged view appears. This also becomes the git worktree
+  directory. Can be relative or absolute.
 
 *commit-ish*
-: Optional. An existing orktree reference (for stacking) or a git ref (branch,
-  tag, commit) to base the new branch on.
+: If *commit-ish* matches the name of an existing orktree, the new
+  orktree is stacked on top of it (the existing orktree's merged path
+  becomes the overlay lowerdir). Otherwise *commit-ish* is treated as
+  a git ref and passed through to **git worktree add**.
 
-**--** *git-worktree-add-flags*
-: Everything after `--` is forwarded to `git worktree add`.
+**--**
+: Everything after **--** is forwarded directly to **git worktree add**.
+  Common options include **-b** *branch*, **--detach**, **--lock**,
+  **--orphan**, and **--force**.
+
+If *commit-ish* is omitted, the branch name defaults to
+**basename**(*path*), matching **git worktree add** behaviour.
 
 # EXAMPLES
 
-Create an orktree from the source root (zero-cost):
+Create an orktree next to the source root:
 
-    orktree add ../fix-parser
+    orktree add ../hotfix
 
-Stack a new orktree on top of an existing one (zero-cost):
+Stack on an existing orktree (zero-cost — overlay lower = hotfix's merged path):
 
-    orktree add ../fix-parser-v2 fix-parser
+    orktree add ../variant hotfix
 
-Branch from a specific git tag:
+Create the worktree on a new branch:
 
-    orktree add ../hotfix v1.2.3
+    orktree add ../experiment -- -b my-branch
 
-Create and cd into the orktree:
+Create a detached HEAD worktree at a specific commit:
 
-    cd "$(orktree add ../feature-x)"
+    orktree add ../bisect v2.0.0 -- --detach
 
 # SEE ALSO
 
-**orktree**(1), **orktree-rm**(1), **orktree-path**(1), **git-worktree**(1)
+**orktree**(1), **orktree-rm**(1), **orktree-mount**(1)

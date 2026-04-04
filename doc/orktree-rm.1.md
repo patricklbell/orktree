@@ -12,15 +12,16 @@ orktree-rm - remove one or more orktrees
 
 # SYNOPSIS
 
-**orktree rm** *branch*... [**--force**] [**--ignore-untracked**] [**--ignore-tracked**]
+**orktree rm** *worktree*... [**--force**] [**--ignore-untracked**] [**--ignore-tracked**]
 
 # DESCRIPTION
 
-Remove the orktrees for the given branches. For each orktree this unmounts
-the overlay, deregisters the git worktree, and deletes all local state.
+Remove the orktrees for the given workspaces. For each orktree this
+unmounts the overlay, deregisters the git worktree, and deletes all
+local state.
 
 **Deleting an orktree does not delete any commits.** The branch and its
-commits remain in git history and can be switched to again at any time.
+commits remain in git history and can be checked out again at any time.
 
 If the orktree is clean (no changed files, no unmerged commits), it is
 removed immediately without prompting.
@@ -52,21 +53,23 @@ In a non-interactive environment (no TTY), the assessment is printed
 followed by a message to pass **--force** to remove without
 confirmation, and the command exits with an error.
 
-When multiple branches are specified, each is processed in order.
+When multiple worktrees are specified, each is processed in order.
 Errors for individual orktrees are reported inline and processing
 continues; a summary error is returned at the end if any removals
 failed.
 
 ## Dependents
 
-If other orktrees depend on this one as their base layer (stacked via the *commit-ish* argument to **orktree add**), removal is always refused — even with **--force**. The
-dependent orktrees must be removed first or re-stacked with a different
-base.
+If other orktrees depend on this one as their base layer (stacked via
+*commit-ish* in **orktree add**), removal is always refused — even with
+**--force**. The dependent orktrees must be removed first or re-stacked
+with a different base.
 
 # OPTIONS
 
-*branch*...
-: One or more branch names, orktree IDs, or unique prefixes of the orktrees to remove.
+*worktree*...
+: One or more orktrees to remove, identified by branch name, path, or
+  unique prefix.
 
 **--force**, **-f**
 : Skip the safety assessment and confirmation prompt, removing the
@@ -86,19 +89,19 @@ base.
 
 Remove a clean orktree (no prompt):
 
-    orktree rm fix-parser
+    orktree rm hotfix
 
 Remove multiple orktrees at once:
 
-    orktree rm branch-a branch-b branch-c
+    orktree rm hotfix variant experiment
 
 Force removal, skipping the interactive assessment:
 
-    orktree rm fix-parser --force
+    orktree rm hotfix --force
 
 Remove even if there are untracked files (but still prompt for tracked changes):
 
-    orktree rm fix-parser --ignore-untracked
+    orktree rm hotfix --ignore-untracked
 
 # SEE ALSO
 

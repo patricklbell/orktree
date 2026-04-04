@@ -16,11 +16,16 @@ orktree-mount - mount an orktree overlay
 
 # DESCRIPTION
 
-Mount the fuse-overlayfs overlay for the given orktree. If the orktree is
-stacked on another orktree, ancestor overlays are mounted first.
+Mount the fuse-overlayfs overlay for an existing orktree. For stacked
+orktrees, ancestor overlays are mounted recursively first.
 
-No-op if the overlay is already mounted.
+This is a no-op if the orktree is already mounted.
+
+# OPTIONS
+
+*worktree*
+: The orktree to mount, identified by branch name, path, or unique prefix.
 
 # SEE ALSO
 
-**orktree**(1), **orktree-unmount**(1)
+**orktree**(1), **orktree-unmount**(1), **orktree-add**(1)

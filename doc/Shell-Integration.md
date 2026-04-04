@@ -1,82 +1,50 @@
 # Shell Integration
 
-## Using orktree from the command line
+orktree doesn't need shell integration. Orktrees live at normal filesystem
+paths, so you can `cd` into them directly:
 
-With the `switch` command removed, orktree uses explicit `add` and `path`
-commands. To change your working directory to an orktree:
-
-    cd "$(orktree path feature-x)"
-
-To create a new orktree and cd into it in one step:
-
-    cd "$(orktree add ../feature-x)"
-
----
-
-## Completions
-
-Source the completion script for tab completion of orktree commands and
-worktree names:
-
-```bash
-# Bash (~/.bashrc)
-source /path/to/completions/orktree.bash
-
-# Zsh — copy to a directory in $fpath:
-cp completions/orktree.zsh /usr/local/share/zsh/site-functions/_orktree
+```sh
+cd "$(orktree path myworktree)"
 ```
 
-If you installed via `make install` or a package, completions are already in place.
+For convenience, you can add a tiny helper function.
 
----
+## Bash / Zsh
 
-## Shell aliases (optional)
+Add to your `~/.bashrc` or `~/.zshrc`:
 
-For convenience you can define shell aliases or functions:
-
-### Bash / Zsh
-
-```bash
-# ~/.bashrc or ~/.zshrc
-ork() {
-  if [[ "$1" == "add" ]]; then
-    shift
-    cd "$(command orktree add "$@")" || return $?
-  else
-    command orktree "$@"
-  fi
-}
+```sh
+ork() { cd "$(orktree path "$1")" || return; }
 ```
 
-### Fish
+Usage:
+
+```sh
+ork feature-x
+```
+
+## Fish
+
+Add to `~/.config/fish/functions/ork.fish`:
 
 ```fish
-# ~/.config/fish/functions/ork.fish
 function ork
-  if test "$argv[1]" = "add"
-    set -l _path (command orktree add $argv[2..])
-    and cd $_path
-  else
-    command orktree $argv
-  end
+  cd (orktree path $argv[1])
 end
 ```
 
 ---
 
-## Troubleshooting
+This is entirely optional — orktree works fine without it. The `ork` function
+is just a shorthand for `cd "$(orktree path ...)"`.
 
-### `orktree: command not found`
+## Tab Completion
 
-The binary is not on your `$PATH`. Verify with:
+`make install` installs tab completion for both **bash** and **zsh**. After
+installation (and restarting your shell), orktree subcommands and branch names
+complete with `<Tab>`.
 
-```bash
-which orktree        # or: command -v orktree
-```
+The completion files are installed to:
 
-If you installed to `~/.local/bin`, make sure `export PATH="$HOME/.local/bin:$PATH"` is in your rc file.
-
-### Completions not working
-
-- **Bash**: Make sure `bash-completion` is installed (`apt install bash-completion` on Debian/Ubuntu).
-- **Zsh**: Ensure `compinit` is called in your `~/.zshrc` and the completion file is in a directory listed in `$fpath`.
+- `~/.local/share/bash-completion/completions/orktree`
+- `~/.local/share/zsh/site-functions/_orktree`

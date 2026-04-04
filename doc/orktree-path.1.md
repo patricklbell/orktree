@@ -16,27 +16,28 @@ orktree-path - print orktree workspace path
 
 # DESCRIPTION
 
-Print the workspace path for an existing orktree. The *worktree* argument
-can be a branch name, orktree ID, basename of the merged path, or a unique
-prefix of any of these.
+Print the merged view path for an existing orktree. Exits with an error
+if the orktree does not exist.
 
-This command does **not** auto-create or auto-mount orktrees. If the
-orktree does not exist, an error is returned.
+This command is resolve-only — it does not create or mount anything.
+Users can combine it with shell commands for directory switching:
+
+    cd "$(orktree path hotfix)"
 
 # OPTIONS
 
 *worktree*
-: The orktree reference (branch name, ID, path basename, or unique prefix).
+: The orktree to resolve, identified by branch name, path, or unique prefix.
 
 # EXAMPLES
 
 Print the workspace path:
 
-    orktree path fix-parser
+    orktree path hotfix
 
 Use in a script:
 
-    cd "$(orktree path fix-parser)"
+    cd "$(orktree path hotfix)"
 
 # SEE ALSO
 
