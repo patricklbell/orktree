@@ -61,10 +61,10 @@ export default tool({
         continue
       }
 
-      // Best-effort orktree removal; ignore errors (branch may already be gone).
-      const branch = record.branch as string
-      if (branch) {
-        await Bun.$`orktree rm ${branch} --force`.cwd(repoRoot).nothrow().quiet()
+      // Best-effort orktree removal; prefer branch (universal identifier), fall back to workspace path.
+      const worktree = (record.branch as string) || (record.workspace_path as string)
+      if (worktree) {
+        await Bun.$`orktree rm ${worktree} --force`.cwd(repoRoot).nothrow().quiet()
       }
       rmSync(runFile, { force: true })
       cleaned++
