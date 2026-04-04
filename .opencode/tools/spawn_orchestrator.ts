@@ -4,13 +4,13 @@ import { mkdirSync, renameSync, writeFileSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
 
-// Run orktree to provision a branch workspace and return its path.
-async function orktreePath(repoRoot: string, branch: string): Promise<string> {
-  const result = await Bun.$`orktree path ${branch}`.cwd(repoRoot).text()
-  const lines = result.trim().split("\n")
-  const last = lines[lines.length - 1]
-  if (!last) throw new Error(`orktree path returned empty output for branch ${branch}`)
-  return last
+// Provision a new orktree worktree at the given path and return it.
+async function orktreeAdd(repoRoot: string, workspacePath: string, branch: string): Promise<string> {
+  // -- separates orktree flags from git-worktree-add flags; -b sets the branch name
+  // explicitly so it matches the warden/<rid> convention instead of defaulting to
+  // the basename of workspacePath.
+  await Bun.$`orktree add ${workspacePath} -- -b ${branch}`.cwd(repoRoot)
+  return workspacePath
 }
 
 function wardenStateDir(): string {
@@ -59,7 +59,8 @@ export default tool({
     const rid = runId(args.label)
     const branch = `warden/${rid}`
 
-    const workspace = await orktreePath(repoRoot, branch)
+    const workspace = `${repoRoot}.orktree/warden/${rid}`
+    await orktreeAdd(repoRoot, workspace, branch)
 
     const rd = runsDir(repoRoot)
     mkdirSync(rd, { recursive: true })
