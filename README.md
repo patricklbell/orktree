@@ -36,6 +36,29 @@ orktree rm feature-x variant            # remove orktrees
 
 `orktree add` registers a git worktree then mounts a copy-on-write fuse-overlayfs layer on top of the existing checkout. Only changed files consume extra disk space — everything else is shared read-only from the lower layer.
 
+### ⚠️ Overlay behavior: source changes propagate automatically
+
+Because orktree uses fuse-overlayfs, any file you haven't modified in an
+orktree is read directly from the source checkout (the lower layer). This
+means **changes in the source repo immediately appear in all child orktrees**.
+
+For example, if you run `echo test > foo.txt` in the source root, that file
+instantly appears in every orktree that hasn't created its own `foo.txt`.
+The same applies when stacking orktrees — a parent orktree's changes
+propagate to its children.
+
+We recommend creating a **dev orktree** for your daily work and only touching
+the source root when integrating changes across orktrees:
+
+```sh
+# Create a dev orktree for everyday work
+orktree add ../dev
+
+# Keep the source root clean — only use it for integration
+```
+
+See [Overlay Behavior](doc/Overlay-Behavior.md) for a detailed explanation.
+
 ### More information
 
 See the [wiki](doc/Home.md) for guides on shell integration, containers, build tools, and more.
