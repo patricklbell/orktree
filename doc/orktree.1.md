@@ -113,6 +113,20 @@ Optional:
 **\<repo\>.orktree/.overlayfs/\<id\>/**
 : Internal fuse-overlayfs upper and work directories.
 
+# NOTES
+
+## Overlay propagation
+
+Because each orktree's lower layer is a live reference to the source checkout
+(or a parent orktree), changes to unmodified files propagate immediately.
+Editing a file in the source root changes it in every child orktree that
+hasn't modified that file.
+
+To keep the lower layer stable, create a **dev** orktree for everyday work
+and reserve the source root for integration:
+
+    orktree add ../dev
+
 # SEE ALSO
 
 **orktree-add**(1), **orktree-rm**(1), **orktree-ls**(1), **orktree-path**(1), **orktree-mount**(1), **orktree-unmount**(1), **orktree-move**(1), **git-worktree**(1), **fuse-overlayfs**(1)

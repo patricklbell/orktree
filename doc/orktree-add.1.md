@@ -43,6 +43,14 @@ commands work inside it without any special configuration.
 If *commit-ish* is omitted, the branch name defaults to
 **basename**(*path*), matching **git worktree add** behaviour.
 
+# NOTES
+
+When creating an orktree, the base checkout (source root or parent orktree)
+becomes the overlayfs lower layer. Files you haven't modified are read
+directly from this lower layer, which means **changes to the base are
+immediately visible** in the new orktree. See **orktree**(1) for details
+and the recommended dev-orktree workflow.
+
 # EXAMPLES
 
 Create an orktree next to the source root:
