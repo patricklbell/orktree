@@ -123,6 +123,24 @@ func TestAddOrktree_duplicatePath_rejected(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CheckEnvironmentPrerequisites
+// ---------------------------------------------------------------------------
+
+func TestCheckEnvironmentPrerequisites_includes_fuse_overlayfs(t *testing.T) {
+	prereqs := orktree.CheckEnvironmentPrerequisites()
+	found := false
+	for _, p := range prereqs {
+		if p.Name == "fuse-overlayfs" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("CheckEnvironmentPrerequisites does not include a fuse-overlayfs check")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // RemoveCheck
 // ---------------------------------------------------------------------------
 
