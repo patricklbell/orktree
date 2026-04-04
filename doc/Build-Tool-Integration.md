@@ -3,12 +3,12 @@
 ## The problem
 
 Build tools cache **absolute paths** — compiler locations, source trees, and
-artifact directories. When you create an orktree the workspace moves to a new
-path:
+artifact directories. When you create an orktree the workspace lives at a
+different path from the source root:
 
 ```
-/projects/myrepo/                         ← source root
-/projects/myrepo.orktree/feature-x/       ← orktree workspace
+/projects/myrepo/        ← source root
+/projects/feature-x/     ← orktree workspace (wherever you placed it)
 ```
 
 If your build was configured in `/projects/myrepo/`, the cached paths inside
@@ -27,7 +27,7 @@ support this and it sidesteps the problem entirely.
 
 ### 2. Path rewriting
 
-After switching to an orktree, rewrite hardcoded paths in cache and config files
+After cd'ing into an orktree, rewrite hardcoded paths in cache and config files
 with `sed` or a dedicated script.
 
 ### 3. Symlinks
@@ -55,14 +55,15 @@ negligible compared to the source tree.
 
 `CMakeCache.txt` stores absolute paths to the source directory
 (`CMAKE_HOME_DIRECTORY`) and compiler. When you work in an orktree at
-`/repo.orktree/feature/` but CMake was originally configured in `/repo/`, those
-paths no longer resolve.
+`/projects/feature-x/` but CMake was originally configured in
+`/projects/myrepo/`, those paths no longer resolve.
 
 ### Solution 1 — Out-of-tree build with path rewriting (recommended)
 
-After switching to an orktree, fix up the cache in place:
+After cd'ing into an orktree, fix up the cache in place:
 
 ```bash
+cd "$(orktree path feature-x)"
 cd build/
 sed -i "s|/original/source/path|$(cd .. && pwd)|g" CMakeCache.txt
 cmake .   # reconfigure with corrected paths — usually fast
@@ -76,7 +77,8 @@ you left off.
 Keep one build directory per orktree so caches never conflict:
 
 ```bash
-orktree switch feature-x
+orktree add ../feature-x
+cd "$(orktree path feature-x)"
 mkdir -p build && cd build
 cmake ..   # fresh configure — no path conflicts
 ```
@@ -101,7 +103,7 @@ For repeated use, wrap the rewriting logic in a script:
 
 ```bash
 #!/bin/bash
-# fix-cmake-cache.sh — run in your build directory after switching orktrees
+# fix-cmake-cache.sh — run in your build directory after entering an orktree
 OLD_SRC=$(grep 'CMAKE_HOME_DIRECTORY:INTERNAL' CMakeCache.txt | cut -d= -f2)
 NEW_SRC=$(cd .. && pwd)
 if [ "$OLD_SRC" != "$NEW_SRC" ]; then
@@ -117,7 +119,7 @@ fi
 
 ### Meson
 
-Meson stores absolute paths in `build.ninja`. After switching orktrees, the
+Meson stores absolute paths in `build.ninja`. After entering an orktree, the
 simplest fix is:
 
 ```bash
@@ -146,7 +148,7 @@ The Go module system is path-independent. No special configuration needed.
 ### Node.js / npm
 
 Usually works, but `node_modules/.cache` may contain stale absolute paths. If
-you see odd errors after switching:
+you see odd errors after entering an orktree:
 
 ```bash
 rm -rf node_modules/.cache
