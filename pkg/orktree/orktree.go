@@ -102,6 +102,13 @@ func LoadIndex(sourceRoot string) (*Index, error) {
 
 // Walks up from startDir to locate an initialised orktree,
 func DiscoverIndex(startDir string) (*Index, error) {
+	// Case 3: inside a git linked worktree (an orktree's merged view).
+	if mainRoot, err := git.MainWorktreeRoot(startDir); err == nil && mainRoot != "" {
+		if cfg, loadErr := state.Load(mainRoot); loadErr == nil {
+			return &Index{state: cfg}, nil
+		}
+	}
+
 	currDir := startDir
 	for {
 		// Case 1: source root — look for siblingIndexDir .orktree/state.json

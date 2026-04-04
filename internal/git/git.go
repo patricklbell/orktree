@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -12,6 +13,30 @@ func IsGitRepo(path string) bool {
 	cmd := exec.Command("git", "-C", path, "rev-parse", "--git-dir")
 	cmd.Stderr = nil
 	return cmd.Run() == nil
+}
+
+// MainWorktreeRoot returns the root directory of the main git worktree that
+// owns the linked worktree containing path. Returns "" if path is not inside
+// a git repository, is not a linked worktree, or is already the main worktree.
+func MainWorktreeRoot(path string) (string, error) {
+	gitDir, err := exec.Command("git", "-C", path, "rev-parse", "--git-dir").Output()
+	if err != nil {
+		return "", nil // not a git repo
+	}
+	commonDir, err := exec.Command("git", "-C", path, "rev-parse", "--git-common-dir").Output()
+	if err != nil {
+		return "", nil
+	}
+	gitDirStr := strings.TrimSpace(string(gitDir))
+	commonDirStr := strings.TrimSpace(string(commonDir))
+	if gitDirStr == commonDirStr {
+		return "", nil // main worktree or bare repo
+	}
+	// In a linked worktree, --git-common-dir is an absolute path to the main .git.
+	if !filepath.IsAbs(commonDirStr) {
+		return "", nil
+	}
+	return filepath.Dir(commonDirStr), nil
 }
 
 func CurrentBranch(repoRoot string) (string, error) {

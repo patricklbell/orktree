@@ -145,3 +145,62 @@ func TestMoveWorktree(t *testing.T) {
 		t.Errorf("new worktree path does not exist: %v", err)
 	}
 }
+func TestMainWorktreeRoot(t *testing.T) {
+	repo := t.TempDir()
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+	)
+	for _, args := range [][]string{
+		{"git", "init", "-b", "main", repo},
+		{"git", "-C", repo, "commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Env = env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", args, out)
+		}
+	}
+
+	wtPath := filepath.Join(t.TempDir(), "my-worktree")
+	if err := CreateBranch(repo, "feat", ""); err != nil {
+		t.Fatalf("CreateBranch feat: %v", err)
+	}
+	if err := AddWorktreeNoCheckout(repo, wtPath, "feat"); err != nil {
+		t.Fatalf("AddWorktreeNoCheckout: %v", err)
+	}
+
+	t.Run("returns_empty_from_main_worktree", func(t *testing.T) {
+		root, err := MainWorktreeRoot(repo)
+		if err != nil {
+			t.Fatalf("MainWorktreeRoot: %v", err)
+		}
+		if root != "" {
+			t.Errorf("expected empty string from main worktree, got %q", root)
+		}
+	})
+
+	t.Run("returns_main_root_from_linked_worktree", func(t *testing.T) {
+		root, err := MainWorktreeRoot(wtPath)
+		if err != nil {
+			t.Fatalf("MainWorktreeRoot: %v", err)
+		}
+		if root != repo {
+			t.Errorf("MainWorktreeRoot = %q, want %q", root, repo)
+		}
+	})
+
+	t.Run("returns_main_root_from_subdirectory_inside_linked_worktree", func(t *testing.T) {
+		sub := filepath.Join(wtPath, "some", "subdir")
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		root, err := MainWorktreeRoot(sub)
+		if err != nil {
+			t.Fatalf("MainWorktreeRoot: %v", err)
+		}
+		if root != repo {
+			t.Errorf("MainWorktreeRoot = %q, want %q", root, repo)
+		}
+	})
+}

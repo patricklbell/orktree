@@ -2,6 +2,7 @@ package orktree_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -58,6 +59,64 @@ func TestDiscoverIndex_fromSubdirectory(t *testing.T) {
 	if idx.SourceRoot() != dir {
 		t.Errorf("SourceRoot = %q, want %q", idx.SourceRoot(), dir)
 	}
+}
+
+func TestDiscoverIndex_fromLinkedWorktree(t *testing.T) {
+	repo := t.TempDir()
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+	)
+	for _, args := range [][]string{
+		{"git", "init", "-b", "main", repo},
+		{"git", "-C", repo, "commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Env = env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", args, out)
+		}
+	}
+
+	if _, err := orktree.CreateIndex(repo); err != nil {
+		t.Fatalf("CreateIndex: %v", err)
+	}
+
+	// Create a git linked worktree (simulating an orktree merged view).
+	wtPath := filepath.Join(t.TempDir(), "my-feature")
+	for _, args := range [][]string{
+		{"git", "-C", repo, "branch", "feat"},
+		{"git", "-C", repo, "worktree", "add", "--no-checkout", wtPath, "feat"},
+	} {
+		cmd := exec.Command(args[0], args[1:]...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", args, out)
+		}
+	}
+
+	t.Run("from_worktree_root", func(t *testing.T) {
+		idx, err := orktree.DiscoverIndex(wtPath)
+		if err != nil {
+			t.Fatalf("DiscoverIndex: %v", err)
+		}
+		if idx.SourceRoot() != repo {
+			t.Errorf("SourceRoot = %q, want %q", idx.SourceRoot(), repo)
+		}
+	})
+
+	t.Run("from_subdirectory_inside_worktree", func(t *testing.T) {
+		sub := filepath.Join(wtPath, "pkg", "server")
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		idx, err := orktree.DiscoverIndex(sub)
+		if err != nil {
+			t.Fatalf("DiscoverIndex: %v", err)
+		}
+		if idx.SourceRoot() != repo {
+			t.Errorf("SourceRoot = %q, want %q", idx.SourceRoot(), repo)
+		}
+	})
 }
 
 func TestListOrktrees_empty(t *testing.T) {
