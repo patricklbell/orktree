@@ -1,38 +1,27 @@
 #compdef orktree
-# Zsh completion and shell wrapper for orktree.
+# Zsh completion for orktree.
 # Install to /usr/share/zsh/site-functions/_orktree or source directly.
-
-# Shell wrapper: overrides `orktree switch` to cd into the orktree.
-if (( ! $+functions[orktree] )); then
-  orktree() {
-    case "$1" in
-      switch|sw)
-        local _orktree_path
-        _orktree_path="$(command orktree path "${@:2}")" && cd "$_orktree_path" || return $?
-        ;;
-      *)
-        command orktree "$@"
-        ;;
-    esac
-  }
-fi
 
 (( $+functions[_orktree_branches] )) || _orktree_branches() {
   local -a branches
   branches=( ${(f)"$(command orktree ls --quiet 2>/dev/null)"} )
-  _describe 'branch' branches
+  _describe 'worktree' branches
 }
 
 _orktree() {
   local -a commands=(
-    'switch:enter orktree (auto-creates if absent)'
-    'sw:alias for switch'
-    'ls:list orktrees with status and size'
-    'list:alias for ls'
-    'path:print workspace path (auto-creates if absent)'
-    'p:alias for path'
+    'add:create a new orktree'
     'rm:remove orktree'
     'remove:alias for rm'
+    'ls:list orktrees'
+    'list:alias for ls'
+    'path:print workspace path'
+    'p:alias for path'
+    'mount:mount overlay'
+    'unmount:unmount overlay'
+    'umount:alias for unmount'
+    'move:move orktree'
+    'mv:alias for move'
     'doctor:diagnose issues'
     'doc:alias for doctor'
     'help:show usage'
@@ -48,22 +37,26 @@ _orktree() {
       ;;
     args)
       case ${words[1]} in
-        switch|sw)
+        add)
           _arguments \
-            '1:branch:_orktree_branches' \
-            '(-f --from)'{-f,--from}'[branch from a specific ref]:ref:_orktree_branches' \
-            '--no-git[skip git branch creation]'
-          ;;
-        path|p)
-          _arguments \
-            '1:branch:_orktree_branches' \
-            '(-f --from)'{-f,--from}'[branch from a specific ref]:ref:_orktree_branches' \
-            '--no-git[skip git branch creation]'
+            '1:path:_directories' \
+            '2:commit-ish:'
           ;;
         rm|remove)
           _arguments \
-            '1:branch:_orktree_branches' \
-            '--force[force removal]'
+            '*:worktree:_orktree_branches' \
+            '--force[force removal]' \
+            '--ignore-untracked[ignore untracked files]' \
+            '--ignore-tracked[ignore tracked changes]'
+          ;;
+        path|p|mount|unmount|umount)
+          _arguments \
+            '1:worktree:_orktree_branches'
+          ;;
+        move|mv)
+          _arguments \
+            '1:worktree:_orktree_branches' \
+            '2:new-path:_directories'
           ;;
         ls|list)
           _arguments \

@@ -135,3 +135,57 @@ func TestFormatAssessment_sectionSeparation(t *testing.T) {
 		t.Errorf("expected blank line between sections, got:\n%s", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Argument validation for new commands
+// ---------------------------------------------------------------------------
+
+func TestRunAdd_noArgs(t *testing.T) {
+	err := run([]string{"add"})
+	if err == nil {
+		t.Fatal("expected error for add with no args")
+	}
+	if !strings.Contains(err.Error(), "usage") {
+		t.Errorf("expected usage error, got: %v", err)
+	}
+}
+
+func TestRunPath_noArgs(t *testing.T) {
+	err := run([]string{"path"})
+	if err == nil {
+		t.Fatal("expected error for path with no args")
+	}
+	if !strings.Contains(err.Error(), "usage") {
+		t.Errorf("expected usage error, got: %v", err)
+	}
+}
+
+func TestRunMount_noArgs(t *testing.T) {
+	err := run([]string{"mount"})
+	if err == nil {
+		t.Fatal("expected error for mount with no args")
+	}
+	if !strings.Contains(err.Error(), "usage") {
+		t.Errorf("expected usage error, got: %v", err)
+	}
+}
+
+func TestRunUnmount_noArgs(t *testing.T) {
+	err := run([]string{"unmount"})
+	if err == nil {
+		t.Fatal("expected error for unmount with no args")
+	}
+	if !strings.Contains(err.Error(), "usage") {
+		t.Errorf("expected usage error, got: %v", err)
+	}
+}
+
+func TestRunMove_noArgs(t *testing.T) {
+	err := run([]string{"move"})
+	if err == nil {
+		t.Fatal("expected error for move with no args")
+	}
+	if !strings.Contains(err.Error(), "usage") {
+		t.Errorf("expected usage error, got: %v", err)
+	}
+}

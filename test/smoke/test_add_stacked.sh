@@ -4,13 +4,11 @@ source "$(dirname "$0")/lib.sh"
 smoke_setup
 cd "$REPO_DIR"
 
-"$ORKTREE" switch base-branch
-base_ws=$("$ORKTREE" path base-branch)
+base_ws=$("$ORKTREE" add ../base-branch)
 
 echo "base content" > "$base_ws/base_file.txt"
 
-"$ORKTREE" switch stacked --from base-branch
-stacked_ws=$("$ORKTREE" path stacked)
+stacked_ws=$("$ORKTREE" add ../stacked base-branch)
 
 # CoW lowerdir: base_file.txt should be visible in stacked workspace
 assert_file_exists "$stacked_ws/base_file.txt"

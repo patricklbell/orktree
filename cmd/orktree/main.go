@@ -28,16 +28,22 @@ func run(args []string) error {
 	}
 
 	switch args[0] {
+	case "add":
+		return cmdAdd(args[1:])
 	case "doctor", "doc":
 		return cmdDoctor(args[1:])
 	case "ls", "list":
 		return cmdLs(args[1:])
-	case "switch", "sw":
-		return cmdSwitch(args[1:])
 	case "rm", "remove":
 		return cmdRm(args[1:])
 	case "path", "p":
 		return cmdPath(args[1:])
+	case "mount":
+		return cmdMount(args[1:])
+	case "unmount", "umount":
+		return cmdUnmount(args[1:])
+	case "move", "mv":
+		return cmdMove(args[1:])
 	case "help", "--help", "-h":
 		printUsage()
 		return nil
@@ -59,11 +65,62 @@ func discoverFromCwd() (*orktree.Index, error) {
 	// Auto-init: detect git repo root and initialize there.
 	out, gitErr := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if gitErr != nil {
-		return nil, fmt.Errorf("no orktree workspace found \xe2\x80\x94 are you inside a git repository?\nhint: run 'orktree switch <branch>' from your repo root to get started")
+		return nil, fmt.Errorf("no orktree workspace found \xe2\x80\x94 are you inside a git repository?\nhint: run 'orktree add <path>' from your repo root to get started")
 	}
 	repoRoot := strings.TrimSpace(string(out))
 	fmt.Fprintf(os.Stderr, "orktree: no workspace found \xe2\x80\x94 initializing at %s\n", repoRoot)
 	return orktree.CreateIndex(repoRoot)
+}
+
+// ---------------------------------------------------------------------------
+// add
+// ---------------------------------------------------------------------------
+
+func cmdAdd(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: orktree add <path> [<commit-ish>] [-- <git-flags>...]")
+	}
+
+	// Split on "--": everything before is orktree args, everything after is
+	// forwarded to git worktree add.
+	var orktreeArgs, extraArgs []string
+	for i, a := range args {
+		if a == "--" {
+			orktreeArgs = args[:i]
+			extraArgs = args[i+1:]
+			break
+		}
+	}
+	if orktreeArgs == nil {
+		orktreeArgs = args
+	}
+
+	if len(orktreeArgs) == 0 {
+		return fmt.Errorf("usage: orktree add <path> [<commit-ish>] [-- <git-flags>...]")
+	}
+
+	path := orktreeArgs[0]
+	var commitIsh string
+	if len(orktreeArgs) > 1 {
+		commitIsh = orktreeArgs[1]
+	}
+
+	mgr, err := discoverFromCwd()
+	if err != nil {
+		return err
+	}
+
+	info, err := mgr.AddOrktree(path, orktree.AddOrktreeOptions{
+		CommitIsh: commitIsh,
+		ExtraArgs: extraArgs,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Created orktree '%s' at %s\n", info.Branch, info.MergedPath)
+	fmt.Println(info.MergedPath)
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -153,20 +210,20 @@ func cmdLs(args []string) error {
 
 	if len(infos) == 0 {
 		if !quiet {
-			fmt.Println("No orktrees yet. Run 'orktree switch <branch>' to create one.")
+			fmt.Println("No orktrees yet. Run 'orktree add <path>' to create one.")
 		}
 		return nil
 	}
 
 	if quiet {
 		for _, info := range infos {
-			fmt.Println(info.Name)
+			fmt.Println(info.Branch)
 		}
 		return nil
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tBRANCH\tSTATUS\tSIZE\tPATH")
+	fmt.Fprintln(tw, "BRANCH\tSTATUS\tSIZE\tPATH")
 	var total int64
 	for _, info := range infos {
 		status := "unmounted"
@@ -178,22 +235,16 @@ func cmdLs(args []string) error {
 			size = humanSize(info.UpperDirSize)
 			total += info.UpperDirSize
 		}
-		// Show branch separately only when it differs from the name.
-		branch := info.Branch
-		if branch == info.Name {
-			branch = ""
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			info.Name,
-			branch,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
+			info.Branch,
 			status,
 			size,
 			info.MergedPath,
 		)
 	}
-	fmt.Fprintf(tw, "\t\t\t────\t\n")
-	fmt.Fprintf(tw, "\t\ttotal\t%s\t\n", humanSize(total))
-	tw.Flush()
+	fmt.Fprintf(tw, "\t\t\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\t\n")
+	fmt.Fprintf(tw, "\ttotal\t%s\t\n", humanSize(total))
+	tw.Flush() //nolint:errcheck
 	return nil
 }
 
@@ -218,58 +269,12 @@ func humanSize(b int64) string {
 }
 
 // ---------------------------------------------------------------------------
-// switch  (orktree switch <branch> [--from <base>] [--no-git] [--name <n>])
+// path
 // ---------------------------------------------------------------------------
 
-func cmdSwitch(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: orktree switch <branch> [--from <base>] [--no-git] [--name <name>]")
-	}
-
-	branch := args[0]
-	from := ""
-	noGit := false
-	name := ""
-
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "--from", "-f":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--from requires a value")
-			}
-			i++
-			from = args[i]
-		case "--no-git":
-			noGit = true
-		case "--name", "-n":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--name requires a value")
-			}
-			i++
-			name = args[i]
-		default:
-			return fmt.Errorf("unknown flag %q", args[i])
-		}
-	}
-
-	// "-" means return to the source root
-	if branch == "-" {
-		if from != "" || noGit || name != "" {
-			return fmt.Errorf("'orktree switch -' returns to the source root and takes no flags")
-		}
-		mgr, err := discoverFromCwd()
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Switched to source root\n")
-		fmt.Fprintf(os.Stderr, "  path      : %s\n", mgr.SourceRoot())
-		// NOTE: fires whenever stderr is a tty, even if the user explicitly
-		// called `command orktree switch` to bypass the wrapper — acceptable
-		// false-positive for a diagnostic hint.
-		if isTerminal(os.Stderr.Fd()) {
-			fmt.Fprintf(os.Stderr, "\nhint: shell function not active — working directory unchanged\n      see 'Shell-Integration' docs or 'orktree help' to enable automatic cd\n")
-		}
-		return nil
+func cmdPath(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: orktree path <worktree>")
 	}
 
 	mgr, err := discoverFromCwd()
@@ -277,60 +282,22 @@ func cmdSwitch(args []string) error {
 		return err
 	}
 
-	_, findErr := mgr.FindOrktree(branch)
-	if findErr != nil {
-		fmt.Fprintf(os.Stderr, "No orktree for '%s' \xe2\x80\x94 creating it now...\n", branch)
-	}
-
-	info, err := mgr.EnsureOrktree(branch, orktree.CreateOrktreeOptions{From: from, NoGit: noGit, Name: name})
+	resolved, err := mgr.ResolveOrktreePath(args[0])
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "Switched to orktree %q\n", info.Name)
-	fmt.Fprintf(os.Stderr, "  path      : %s\n", info.MergedPath)
-	// NOTE: fires whenever stderr is a tty, even if the user explicitly
-	// called `command orktree switch` to bypass the wrapper — acceptable
-	// false-positive for a diagnostic hint.
-	if isTerminal(os.Stderr.Fd()) {
-		fmt.Fprintf(os.Stderr, "\nhint: shell function not active — working directory unchanged\n      see 'Shell-Integration' docs or 'orktree help' to enable automatic cd\n")
-	}
+	fmt.Println(resolved)
 	return nil
 }
 
 // ---------------------------------------------------------------------------
-// path  (orktree path <branch> [--from <base>] [--no-git] [--name <n>])
+// mount
 // ---------------------------------------------------------------------------
 
-func cmdPath(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: orktree path <branch> [--from <base>] [--no-git] [--name <name>]")
-	}
-
-	branch := args[0]
-	from := ""
-	noGit := false
-	name := ""
-
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "--from", "-f":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--from requires a value")
-			}
-			i++
-			from = args[i]
-		case "--no-git":
-			noGit = true
-		case "--name", "-n":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--name requires a value")
-			}
-			i++
-			name = args[i]
-		default:
-			return fmt.Errorf("unknown flag %q", args[i])
-		}
+func cmdMount(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: orktree mount <worktree>")
 	}
 
 	mgr, err := discoverFromCwd()
@@ -338,23 +305,55 @@ func cmdPath(args []string) error {
 		return err
 	}
 
-	// "-" means source root — used by the shell wrapper for "orktree switch -"
-	if branch == "-" {
-		fmt.Println(mgr.SourceRoot())
-		return nil
+	if err := mgr.MountOrktree(args[0]); err != nil {
+		return err
 	}
 
-	_, findErr := mgr.FindOrktree(branch)
-	if findErr != nil {
-		fmt.Fprintf(os.Stderr, "No orktree for '%s' \xe2\x80\x94 creating it now...\n", branch)
+	fmt.Fprintf(os.Stderr, "Mounted orktree '%s'\n", args[0])
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// unmount
+// ---------------------------------------------------------------------------
+
+func cmdUnmount(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: orktree unmount <worktree>")
 	}
 
-	info, err := mgr.EnsureOrktree(branch, orktree.CreateOrktreeOptions{From: from, NoGit: noGit, Name: name})
+	mgr, err := discoverFromCwd()
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(info.MergedPath)
+	if err := mgr.UnmountOrktree(args[0]); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Unmounted orktree '%s'\n", args[0])
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// move
+// ---------------------------------------------------------------------------
+
+func cmdMove(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: orktree move <worktree> <new-path>")
+	}
+
+	mgr, err := discoverFromCwd()
+	if err != nil {
+		return err
+	}
+
+	if err := mgr.MoveOrktree(args[0], args[1]); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Moved orktree '%s' to %s\n", args[0], args[1])
 	return nil
 }
 
@@ -442,7 +441,7 @@ func formatAssessment(rc *orktree.RemoveCheck) string {
 
 func cmdRm(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: orktree rm <branch>... [--force] [--ignore-untracked] [--ignore-tracked]")
+		return fmt.Errorf("usage: orktree rm <worktree>... [--force] [--ignore-untracked] [--ignore-tracked]")
 	}
 
 	var branches []string
@@ -467,7 +466,7 @@ func cmdRm(args []string) error {
 	}
 
 	if len(branches) == 0 {
-		return fmt.Errorf("usage: orktree rm <branch>... [--force] [--ignore-untracked] [--ignore-tracked]")
+		return fmt.Errorf("usage: orktree rm <worktree>... [--force] [--ignore-untracked] [--ignore-tracked]")
 	}
 
 	// --force implies both scoped ignore flags.
@@ -518,7 +517,7 @@ func rmOne(mgr *orktree.Index, ref string, force, ignoreUntracked, ignoreTracked
 			fmt.Fprintf(os.Stderr, "  %s\n", d)
 		}
 		fmt.Fprintln(os.Stderr, "remove the dependent orktrees first, or re-stack them with a different base")
-		return fmt.Errorf("cannot remove %q — has dependents", rc.Branch)
+		return fmt.Errorf("cannot remove %q \xe2\x80\x94 has dependents", rc.Branch)
 	}
 
 	// --force was passed: skip the safety assessment and remove immediately.
@@ -527,7 +526,7 @@ func rmOne(mgr *orktree.Index, ref string, force, ignoreUntracked, ignoreTracked
 		if err := mgr.RemoveOrktree(ref); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Name)
+		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Branch)
 		return nil
 	}
 
@@ -536,7 +535,7 @@ func rmOne(mgr *orktree.Index, ref string, force, ignoreUntracked, ignoreTracked
 		if err := mgr.RemoveOrktree(ref); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Name)
+		fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Branch)
 		return nil
 	}
 
@@ -553,7 +552,7 @@ func rmOne(mgr *orktree.Index, ref string, force, ignoreUntracked, ignoreTracked
 	tty := isTerminal(os.Stdin.Fd()) && isTerminal(os.Stderr.Fd())
 	if !tty {
 		fmt.Fprintln(os.Stderr, "pass --force to remove without confirmation")
-		return fmt.Errorf("cannot confirm removal of %q — not a terminal", rc.Branch)
+		return fmt.Errorf("cannot confirm removal of %q \xe2\x80\x94 not a terminal", rc.Branch)
 	}
 
 	prompt := fmt.Sprintf("Remove orktree %q (%s)? Commits on this branch are preserved in git history.", rc.Branch, rc.MergedPath)
@@ -582,7 +581,7 @@ func rmOne(mgr *orktree.Index, ref string, force, ignoreUntracked, ignoreTracked
 	if err := mgr.RemoveOrktree(ref); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Name)
+	fmt.Fprintf(os.Stderr, "Removed orktree '%s'\n", info.Branch)
 	return nil
 }
 
@@ -598,19 +597,22 @@ Usage:
   orktree <command> [flags]
 
 Commands:
-  switch  <branch> [--from <b>] [--no-git] [--name <n>]                   Enter orktree (auto-creates)
-  switch  -                                                                 Return to the source root
-  ls      [--quiet]                                                         List orktrees with status and size
-  path    <branch> [--from <b>] [--no-git] [--name <n>]                    Print workspace path (auto-creates)
-  rm      <branch>... [--force] [--ignore-untracked] [--ignore-tracked]    Remove orktree(s). Commits are preserved in git history.
-  doctor                                                                    Runs the doctor to diagnose issues
+  add     <path> [<commit-ish>] [-- <git-flags>...]      Create a new orktree
+  rm      <worktree>... [--force] [--ignore-untracked]    Remove orktree(s)
+  ls      [--quiet]                                        List orktrees
+  path    <worktree>                                       Print workspace path
+  mount   <worktree>                                       Mount overlay
+  unmount <worktree>                                       Unmount overlay
+  move    <worktree> <new-path>                            Move orktree
+  doctor                                                   Diagnose issues
+  help                                                     Show this help
 
-Aliases:  sw → switch,  p → path,  list → ls,  remove → rm
+Aliases:  p → path,  list → ls,  remove → rm,  umount → unmount,  mv → move
 
 Getting started:
   cd /path/to/your/repo
-  orktree switch my-feature        # creates and enters orktree
-  orktree switch -                 # returns to source root
+  orktree add ../feature-x           # creates orktree in sibling directory
+  orktree add ../stacked feature-x   # stack on existing orktree
 
 Run 'man orktree <command>' for details on a specific command.
 `)

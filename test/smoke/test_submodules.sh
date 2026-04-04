@@ -18,9 +18,8 @@ git -C "$REPO_DIR" -c protocol.file.allow=always submodule add "$SUB_DIR" submod
 git -C "$REPO_DIR" commit -m "add submodule"
 
 cd "$REPO_DIR"
-"$ORKTREE" switch feature-sub
+ws=$("$ORKTREE" add ../feature-sub)
 
-ws=$("$ORKTREE" path feature-sub)
 assert_dir_exists "$ws"
 assert_branch "$ws" "feature-sub"
 

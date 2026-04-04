@@ -4,11 +4,8 @@ source "$(dirname "$0")/lib.sh"
 smoke_setup
 cd "$REPO_DIR"
 
-"$ORKTREE" switch branch-a
-"$ORKTREE" switch branch-b
-
-ws_a=$("$ORKTREE" path branch-a)
-ws_b=$("$ORKTREE" path branch-b)
+ws_a=$("$ORKTREE" add ../branch-a)
+ws_b=$("$ORKTREE" add ../branch-b)
 
 # Run two background processes in parallel
 (
