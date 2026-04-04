@@ -61,8 +61,8 @@ export default tool({
         continue
       }
 
-      // Best-effort orktree removal; prefer workspace path (more robust), fall back to branch.
-      const worktree = (record.workspace_path as string) || (record.branch as string)
+      // Best-effort orktree removal; prefer branch (universal identifier), fall back to workspace path.
+      const worktree = (record.branch as string) || (record.workspace_path as string)
       if (worktree) {
         await Bun.$`orktree rm ${worktree} --force`.cwd(repoRoot).nothrow().quiet()
       }
