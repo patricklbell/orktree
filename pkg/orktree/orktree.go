@@ -395,6 +395,14 @@ func (i *Index) MoveOrktree(ref, newPath string) error {
 		return err
 	}
 
+	// Update dependents whose LowerDir pointed at the old merged path.
+	for _, dep := range state.Dependents(i.state, w.ID) {
+		dep.LowerDir = absNewPath
+		if err := state.UpdateOrktree(i.state, dep); err != nil {
+			return fmt.Errorf("updating dependent orktree %q: %w", dep.Branch, err)
+		}
+	}
+
 	// Remount overlay at new path.
 	upper, work := i.state.OverlayDirs(w)
 	lowerDir := w.LowerDir
