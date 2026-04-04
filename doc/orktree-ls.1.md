@@ -16,12 +16,26 @@ orktree-ls - list orktrees
 
 # DESCRIPTION
 
-List all orktrees in the current repository with their branch name,
-mount status, upper directory disk usage (SIZE), and workspace path.
+List all orktrees in the current repository. Output columns:
+
+**BRANCH**
+: The git branch associated with the orktree.
+
+**STATUS**
+: Mount status (mounted/unmounted).
+
+**SIZE**
+: Disk usage of the overlay upper directory — how much space has been
+  consumed by files modified within the orktree.
+
+**PATH**
+: The merged view path (git worktree location).
 
 The output includes a **total** line showing the combined size of all
-orktree upper directories. The SIZE column shows how much disk space
-has been consumed by files modified within each orktree.
+orktree upper directories.
+
+For basic worktree information, **git worktree list** also works since
+orktree workspaces are standard git worktrees.
 
 # OPTIONS
 
@@ -41,4 +55,4 @@ Get branch names only:
 
 # SEE ALSO
 
-**orktree**(1), **orktree-switch**(1)
+**orktree**(1), **orktree-add**(1)
