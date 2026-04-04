@@ -22,22 +22,21 @@ overlay so that only files you actually modify consume extra disk space.
 
 The merged overlay path **is** the git worktree path. Standard git
 commands, **git worktree list**, **git worktree lock/unlock**, and
-**git worktree prune/repair** all work alongside orktree without
-special configuration.
+**git worktree prune/repair** work alongside orktree.
 
 # COMMANDS
 
-**add** *path* [*commit-ish*] [**--**] [*git-worktree-add-flags*...]
+**add** *path* [*commit-ish*] [**\-\-**] [*git-worktree-add-flags*...]
 : Create a new orktree at *path*. Registers a git worktree, mounts a
   CoW overlay, and returns with the workspace ready.
 
-**rm** *worktree*... [**--force**] [**--ignore-untracked**] [**--ignore-tracked**]
+**rm** *worktree*... [**\-\-force**] [**\-\-ignore-untracked**] [**\-\-ignore-tracked**]
 : Remove one or more orktrees. Refuses removal if there are dependent
-  orktrees. Use **--force** to skip safety checks, or **--ignore-untracked**
-  / **--ignore-tracked** for finer-grained control. Commits are preserved in
+  orktrees. Use **\-\-force** to skip safety checks, or **\-\-ignore-untracked**
+  / **\-\-ignore-tracked** for finer-grained control. Commits are preserved in
   git history.
 
-**ls** [**--quiet**]
+**ls** [**\-\-quiet**]
 : List all orktrees with branch, status, size, and path.
 
 **path** *worktree*
@@ -77,8 +76,7 @@ read-only from the lower layer.
 
 When the *commit-ish* argument to **orktree add** matches an existing
 orktree, the new orktree is stacked on top of it — the existing
-orktree's merged path becomes the overlay lowerdir. This is zero-cost:
-no files are copied.
+orktree's merged path becomes the overlay lowerdir. No files are copied.
 
     # Create an orktree from the source root
     orktree add ../hotfix

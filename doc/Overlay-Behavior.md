@@ -11,7 +11,7 @@ directory). When you read a file in the orktree:
 2. Otherwise, the file is read from the **lower layer** — the source checkout or
    a parent orktree's merged view.
 
-This is the mechanism that makes orktree creation zero-cost: no files are copied.
+This is the mechanism that makes orktree creation possibke without copying files.
 
 ## What this means in practice
 
@@ -78,9 +78,9 @@ as their base — not every orktree in the repository.
 | **File storage** | Full copy of every file | Only modified files stored |
 | **Isolation** | Fully independent | Shares unmodified files with lower layer |
 | **Source changes** | No effect on worktrees | Immediately visible in child orktrees |
-| **Creation cost** | O(repo size) | O(1) — zero-cost |
+| **Creation cost** | O(repo size) | O(1) |
 
-This trade-off is fundamental to how orktree achieves zero-cost creation: by
+This trade-off is fundamental to how orktree achieves instant creation: by
 sharing the lower layer live rather than copying it.
 
 ## See also

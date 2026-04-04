@@ -26,42 +26,26 @@ Download the appropriate package for your distribution and architecture (x86_64/
 
 ```sh
 cd /path/to/your/repo
-orktree add ../feature-x               # create orktree next to repo
-orktree add ../variant feature-x        # stack: variant sees feature-x files, changes are isolated
+orktree add ../feature-x                # create orktree next to repo
 orktree ls                              # list orktrees
 orktree rm feature-x variant            # remove orktrees
 ```
+
+> ⚠️ the `feature-x` folder overlays the repo, changes in the original directory
+> can appear in `feature-x`. I recommend creating a dev orktree
+> (`orktree add ../dev`) and only touching the source root when integrating changes across orktrees.
+
 
 ### How it works
 
 `orktree add` registers a git worktree then mounts a copy-on-write fuse-overlayfs layer on top of the existing checkout. Only changed files consume extra disk space — everything else is shared read-only from the lower layer.
 
-### ⚠️ Overlay behavior: source changes propagate automatically
-
-Because orktree uses fuse-overlayfs, any file you haven't modified in an
-orktree is read directly from the source checkout (the lower layer). This
-means **changes in the source repo immediately appear in all child orktrees**.
-
-For example, if you run `echo test > foo.txt` in the source root, that file
-instantly appears in every orktree that hasn't created its own `foo.txt`.
-The same applies when stacking orktrees — a parent orktree's changes
-propagate to its children.
-
-We recommend creating a **dev orktree** for your daily work and only touching
-the source root when integrating changes across orktrees:
-
-```sh
-# Create a dev orktree for everyday work
-orktree add ../dev
-
-# Keep the source root clean — only use it for integration
-```
-
 See [Overlay Behavior](doc/Overlay-Behavior.md) for a detailed explanation.
 
 ### More information
+For a detailed description of the commands see `man orktree` or `man orktree <subcommand>`.
 
-See the [wiki](doc/Home.md) for guides on shell integration, containers, build tools, and more.
+See the [Wiki](doc/Home.md) for guides on shell integration, containers, build tools, uninstalling and more.
 
 ## Developer instructions
 
@@ -98,6 +82,6 @@ make install       # installs to ~/.local by default (PREFIX=~/.local)
 
 ### Build and Test
 ```sh
-make build test    # builds to build by default (OUT_DIR=build)
-make smoke         # end-to-end smoke tests (requires fuse-overlayfs)
+make build         # builds to build by default (OUT_DIR=build)
+make test smoke    # run unit and smoke tests (requires fuse-overlayfs)
 ```

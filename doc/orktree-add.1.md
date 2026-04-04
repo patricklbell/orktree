@@ -12,7 +12,7 @@ orktree-add - create a new orktree
 
 # SYNOPSIS
 
-**orktree add** *path* [*commit-ish*] [**--**] [*git-worktree-add-flags*...]
+**orktree add** *path* [*commit-ish*] [**\-\-**] [*git-worktree-add-flags*...]
 
 # DESCRIPTION
 
@@ -35,10 +35,10 @@ commands work inside it without any special configuration.
   becomes the overlay lowerdir). Otherwise *commit-ish* is treated as
   a git ref and passed through to **git worktree add**.
 
-**--**
-: Everything after **--** is forwarded directly to **git worktree add**.
-  Common options include **-b** *branch*, **--detach**, **--lock**,
-  **--orphan**, and **--force**.
+**\-\-**
+: Everything after **\-\-** is forwarded directly to **git worktree add**.
+  Common options include **-b** *branch*, **\-\-detach**, **\-\-lock**,
+  **\-\-orphan**, and **\-\-force**.
 
 If *commit-ish* is omitted, the branch name defaults to
 **basename**(*path*), matching **git worktree add** behaviour.
@@ -57,17 +57,17 @@ Create an orktree next to the source root:
 
     orktree add ../hotfix
 
-Stack on an existing orktree (zero-cost — overlay lower = hotfix's merged path):
+Stack on an existing orktree:
 
     orktree add ../variant hotfix
 
 Create the worktree on a new branch:
 
-    orktree add ../experiment -- -b my-branch
+    orktree add ../experiment \-\- -b my-branch
 
 Create a detached HEAD worktree at a specific commit:
 
-    orktree add ../bisect v2.0.0 -- --detach
+    orktree add ../bisect v2.0.0 \-\- \-\-detach
 
 # SEE ALSO
 

@@ -12,7 +12,7 @@ orktree-ls - list orktrees
 
 # SYNOPSIS
 
-**orktree ls** [**--quiet**]
+**orktree ls** [**\-\-quiet**]
 
 # DESCRIPTION
 
@@ -39,7 +39,7 @@ orktree workspaces are standard git worktrees.
 
 # OPTIONS
 
-**--quiet**, **-q**
+**\-\-quiet**, **\-q**
 : Print one branch name per line with no header or decoration. Suitable for
   scripting and shell completion.
 

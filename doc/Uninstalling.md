@@ -6,17 +6,17 @@ How to cleanly stop using orktree and remove it from your system.
 
 ## 1. Remove all orktrees
 
-Unmount and remove every orktree managed by the current repository:
+Unmount and remove each orktree individually:
+
+```sh
+orktree rm feature-x
+orktree rm hotfix-123
+```
+
+Or automatically **force** remove every orktree managed by the repository:
 
 ```sh
 for w in $(orktree ls --quiet); do orktree rm --force "$w"; done
-```
-
-Or remove them individually:
-
-```sh
-orktree rm --force feature-x
-orktree rm --force hotfix-123
 ```
 
 ## 2. Clean up git worktrees

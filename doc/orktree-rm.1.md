@@ -12,7 +12,7 @@ orktree-rm - remove one or more orktrees
 
 # SYNOPSIS
 
-**orktree rm** *worktree*... [**--force**] [**--ignore-untracked**] [**--ignore-tracked**]
+**orktree rm** *worktree*... [**\-\-force**] [**\-\-ignore-untracked**] [**\-\-ignore-tracked**]
 
 # DESCRIPTION
 
@@ -50,7 +50,7 @@ depends on the severity of the changes:
 - **[Y/n]** (default Yes) when only untracked or ignored files remain.
 
 In a non-interactive environment (no TTY), the assessment is printed
-followed by a message to pass **--force** to remove without
+followed by a message to pass **\-\-force** to remove without
 confirmation, and the command exits with an error.
 
 When multiple worktrees are specified, each is processed in order.
@@ -62,7 +62,7 @@ failed.
 
 If other orktrees depend on this one as their base layer (stacked via
 *commit-ish* in **orktree add**), removal is always refused — even with
-**--force**. The dependent orktrees must be removed first or re-stacked
+**\-\-force**. The dependent orktrees must be removed first or re-stacked
 with a different base.
 
 # OPTIONS
@@ -71,17 +71,17 @@ with a different base.
 : One or more orktrees to remove, identified by branch name, path, or
   unique prefix.
 
-**--force**, **-f**
+**\-\-force**, **\-f**
 : Skip the safety assessment and confirmation prompt, removing the
-  orktree immediately. Implies **--ignore-untracked** and
-  **--ignore-tracked**. Does **not** override the dependents check —
+  orktree immediately. Implies **\-\-ignore\-untracked** and
+  **\-\-ignore\-tracked**. Does **not** override the dependents check —
   orktrees with dependents are always refused.
 
-**--ignore-untracked**
+**\-\-ignore\-untracked**
 : Do not treat untracked files as a reason to prompt for confirmation.
   Untracked files in the overlay will still be deleted.
 
-**--ignore-tracked**
+**\-\-ignore\-tracked**
 : Do not treat modified tracked files as a reason to prompt for
   confirmation. Tracked changes in the overlay will still be deleted.
 
@@ -97,11 +97,11 @@ Remove multiple orktrees at once:
 
 Force removal, skipping the interactive assessment:
 
-    orktree rm hotfix --force
+    orktree rm hotfix \-\-force
 
 Remove even if there are untracked files (but still prompt for tracked changes):
 
-    orktree rm hotfix --ignore-untracked
+    orktree rm hotfix \-\-ignore\-untracked
 
 # SEE ALSO
 
