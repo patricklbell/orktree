@@ -19,35 +19,12 @@ type State struct {
 }
 
 type Orktree struct {
-	// ID is a short random hex identifier.
-	ID string `json:"id"`
-	// Branch is the git branch name (or a human label when not in a git repo).
-	Branch string `json:"branch"`
-	// Name is the human-visible label used for directory paths.
-	// When empty (legacy state), Branch is used as the name.
-	Name string `json:"name,omitempty"`
-	// GitTreePath is the path to the registered git worktree directory.
-	// Empty when the orktree is not git-backed.
-	GitTreePath string `json:"git_tree_path,omitempty"`
-	// LowerDir is the overlayfs lowerdir path.
-	// For a conventional orktree this equals GitTreePath (the full checkout).
-	// For a zero-cost orktree this is either the source root or the merged
-	// path of a parent orktree — no separate checkout is needed.
-	LowerDir string `json:"lower_dir,omitempty"`
-	// LowerOrktreeBranch records the parent orktree branch when this orktree
-	// was created zero-cost from another orktree.
-	LowerOrktreeBranch string    `json:"lower_orktree_branch,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
-}
-
-// EffectiveName returns the name used for directory paths.
-// Falls back to Branch when Name is empty so that legacy state files
-// (which predate the name field) continue to resolve correctly.
-func (w Orktree) EffectiveName() string {
-	if w.Name != "" {
-		return w.Name
-	}
-	return w.Branch
+	ID             string    `json:"id"`
+	Branch         string    `json:"branch"`
+	MergedPath     string    `json:"merged_path"`
+	LowerDir       string    `json:"lower_dir,omitempty"`
+	LowerOrktreeID string    `json:"lower_orktree_id,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // Path to the orktree data directory that sits next to
@@ -143,14 +120,13 @@ func Init(sourceRoot string, isGitRepo bool) (*State, error) {
 }
 
 // Adds an orktree entry to cfg and saves state.
-// name is the human-visible label used for directory paths; pass "" to default
-// to branch (preserving backward-compatible behaviour).
-func NewOrktree(cfg *State, branch, name string) (Orktree, error) {
+// mergedPath is the absolute path where the user works (the overlayfs mount point).
+func NewOrktree(cfg *State, branch, mergedPath string) (Orktree, error) {
 	w := Orktree{
-		ID:        newID(),
-		Branch:    branch,
-		Name:      name,
-		CreatedAt: time.Now().UTC(),
+		ID:         newID(),
+		Branch:     branch,
+		MergedPath: mergedPath,
+		CreatedAt:  time.Now().UTC(),
 	}
 	cfg.Orktrees = append(cfg.Orktrees, w)
 	return w, Save(cfg)
@@ -167,18 +143,6 @@ func UpdateOrktree(cfg *State, w Orktree) error {
 	return fmt.Errorf("orktree %q not found", w.ID)
 }
 
-// RenameOrktree updates the Name field of the orktree with the given ID and saves.
-// The caller is responsible for validating newName and for moving the merged directory.
-func RenameOrktree(cfg *State, id, newName string) error {
-	for i, w := range cfg.Orktrees {
-		if w.ID == id {
-			cfg.Orktrees[i].Name = newName
-			return Save(cfg)
-		}
-	}
-	return fmt.Errorf("orktree %q not found", id)
-}
-
 // Removes the orktree entry with the given ID and saves.
 func RemoveOrktree(cfg *State, id string) error {
 	for i, w := range cfg.Orktrees {
@@ -190,52 +154,65 @@ func RemoveOrktree(cfg *State, id string) error {
 	return fmt.Errorf("orktree %q not found", id)
 }
 
-// Orktrees whose LowerOrktreeBranch matches branch,
-// i.e. orktrees that directly depend on the given branch as their overlay base.
-func Dependents(cfg *State, branch string) []Orktree {
+// Orktrees whose LowerOrktreeID matches id,
+// i.e. orktrees that directly depend on the given orktree as their overlay base.
+func Dependents(cfg *State, id string) []Orktree {
 	var deps []Orktree
 	for _, w := range cfg.Orktrees {
-		if w.LowerOrktreeBranch == branch {
+		if w.LowerOrktreeID == id {
 			deps = append(deps, w)
 		}
 	}
 	return deps
 }
 
-// Orktree matching ref by ID, branch name, name, or prefix.
+// Orktree matching ref by ID, branch, basename of MergedPath, absolute
+// MergedPath, or prefix of any of the first three.
 func FindOrktree(cfg *State, ref string) (Orktree, error) {
-	// Exact ID match.
+	// 1. Exact ID match.
 	for _, w := range cfg.Orktrees {
 		if w.ID == ref {
 			return w, nil
 		}
 	}
-	// Exact branch match.
+	// 2. Exact branch match.
 	for _, w := range cfg.Orktrees {
 		if w.Branch == ref {
 			return w, nil
 		}
 	}
-	// Exact name match.
+	// 3. Exact basename of MergedPath match.
 	for _, w := range cfg.Orktrees {
-		if w.Name != "" && w.Name == ref {
+		if w.MergedPath != "" && filepath.Base(w.MergedPath) == ref {
 			return w, nil
 		}
 	}
-	// Use a map to deduplicate (an orktree could match both by ID prefix and
-	// branch/name prefix).
+	// 4. Full absolute path match against MergedPath.
+	for _, w := range cfg.Orktrees {
+		if w.MergedPath != "" && w.MergedPath == ref {
+			return w, nil
+		}
+	}
+	// 5–7. Prefix matches (deduplicated).
+	// Use a map to deduplicate (an orktree could match by multiple prefix types).
 	seen := make(map[string]Orktree)
 	for _, w := range cfg.Orktrees {
+		// 5. ID prefix match.
 		if len(ref) > 0 && len(w.ID) >= len(ref) && w.ID[:len(ref)] == ref {
 			seen[w.ID] = w
 			continue
 		}
+		// 6. Branch prefix match.
 		if len(ref) > 0 && len(w.Branch) >= len(ref) && w.Branch[:len(ref)] == ref {
 			seen[w.ID] = w
 			continue
 		}
-		if w.Name != "" && len(ref) > 0 && len(w.Name) >= len(ref) && w.Name[:len(ref)] == ref {
-			seen[w.ID] = w
+		// 7. Basename of MergedPath prefix match.
+		if w.MergedPath != "" {
+			base := filepath.Base(w.MergedPath)
+			if len(ref) > 0 && len(base) >= len(ref) && base[:len(ref)] == ref {
+				seen[w.ID] = w
+			}
 		}
 	}
 	switch len(seen) {
@@ -249,35 +226,11 @@ func FindOrktree(cfg *State, ref string) (Orktree, error) {
 	return Orktree{}, fmt.Errorf("ambiguous orktree reference %q (matches multiple)", ref)
 }
 
-// Path where the registered git worktree directory for w
-// is stored.  For zero-cost orktrees this directory contains only a .git gitfile
-// (no checkout); for conventional orktrees it is the full checkout used as lowerdir.
-func (c *State) GitTreeDir(w Orktree) string {
-	return filepath.Join(SiblingDir(c.SourceRoot), ".overlayfs", w.ID, "tree")
-}
-
-// Upper, work, and merged directory paths for w.
-// Names containing "/" (e.g. "feature/my-branch") produce nested merged paths.
-func (c *State) OverlayDirs(w Orktree) (upper, work, merged string) {
-	sib := SiblingDir(c.SourceRoot)
-	hidden := filepath.Join(sib, ".overlayfs", w.ID)
-	// filepath.FromSlash translates names like "feature/my-branch" into
-	// nested directories, matching how users expect them to appear.
-	merged = filepath.Join(sib, filepath.FromSlash(w.EffectiveName()))
-	return filepath.Join(hidden, "upper"), filepath.Join(hidden, "work"), merged
-}
-
-// Overlayfs lowerdir for w.
-// When LowerDir is explicitly stored it is returned directly;
-// otherwise falls back to GitTreePath then the source root.
-func (c *State) MountPath(w Orktree) string {
-	if w.LowerDir != "" {
-		return w.LowerDir
-	}
-	if w.GitTreePath != "" {
-		return w.GitTreePath
-	}
-	return c.SourceRoot
+// Upper and work directory paths for w's overlay.
+// The merged directory is w.MergedPath (set at creation time).
+func (c *State) OverlayDirs(w Orktree) (upper, work string) {
+	base := filepath.Join(SiblingDir(c.SourceRoot), ".overlayfs", w.ID)
+	return filepath.Join(base, "upper"), filepath.Join(base, "work")
 }
 
 // Random 6-character hex id.

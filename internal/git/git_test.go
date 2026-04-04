@@ -3,6 +3,7 @@ package git
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -103,5 +104,44 @@ func TestCheckIgnored_noneIgnored(t *testing.T) {
 	}
 	if ignored != nil {
 		t.Errorf("expected nil, got %v", ignored)
+	}
+}
+
+func TestMoveWorktree(t *testing.T) {
+	repo := t.TempDir()
+	for _, args := range [][]string{
+		{"git", "init", "-b", "main", repo},
+		{"git", "-C", repo, "commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", args, out)
+		}
+	}
+
+	// Create a branch and worktree.
+	if err := CreateBranch(repo, "feat", ""); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+	oldPath := filepath.Join(t.TempDir(), "old-wt")
+	if err := AddWorktreeNoCheckout(repo, oldPath, "feat"); err != nil {
+		t.Fatalf("AddWorktreeNoCheckout: %v", err)
+	}
+
+	newPath := filepath.Join(t.TempDir(), "new-wt")
+	if err := MoveWorktree(repo, oldPath, newPath); err != nil {
+		t.Fatalf("MoveWorktree: %v", err)
+	}
+
+	// Old path should not exist, new path should.
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Error("old worktree path still exists after move")
+	}
+	if _, err := os.Stat(newPath); err != nil {
+		t.Errorf("new worktree path does not exist: %v", err)
 	}
 }

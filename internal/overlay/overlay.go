@@ -39,8 +39,10 @@ func UserAllowOther() bool {
 	return false
 }
 
-func Create(upper, work, merged string) error {
-	for _, dir := range []string{upper, work, merged} {
+// Create creates the upper and work directories for an overlay.
+// The merged directory is created by git worktree add, not here.
+func Create(upper, work string) error {
+	for _, dir := range []string{upper, work} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("creating overlay dir %s: %w", dir, err)
 		}
@@ -108,7 +110,10 @@ func EnsureMounted(source, upper, work, merged string) error {
 	return Mount(source, upper, work, merged)
 }
 
-func Remove(upper, work, merged string) error {
+// Remove unmounts the overlay at merged and removes the overlay data
+// directory (upper's parent).  It does NOT remove the merged path itself —
+// git worktree remove handles that.
+func Remove(upper, merged string) error {
 	mounted, err := IsMounted(merged)
 	if err != nil {
 		return err

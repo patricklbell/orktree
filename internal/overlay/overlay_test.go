@@ -12,13 +12,12 @@ func TestCreate_createsDirectories(t *testing.T) {
 	base := t.TempDir()
 	upper := filepath.Join(base, "upper")
 	work := filepath.Join(base, "work")
-	merged := filepath.Join(base, "merged")
 
-	if err := Create(upper, work, merged); err != nil {
+	if err := Create(upper, work); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	for _, dir := range []string{upper, work, merged} {
+	for _, dir := range []string{upper, work} {
 		info, err := os.Stat(dir)
 		if err != nil {
 			t.Errorf("directory %s not created: %v", dir, err)

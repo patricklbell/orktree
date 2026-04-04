@@ -39,30 +39,6 @@ func BranchExists(repoRoot, branch string) (bool, error) {
 	return false, fmt.Errorf("checking branch %q: %w", branch, err)
 }
 
-func AddWorktree(repoRoot, worktreePath, branch string, newBranch bool, from string) error {
-	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
-		return fmt.Errorf("creating worktree path %s: %w", worktreePath, err)
-	}
-
-	var args []string
-	if newBranch {
-		args = []string{"-C", repoRoot, "worktree", "add", "-b", branch, worktreePath}
-		if from != "" {
-			args = append(args, from)
-		}
-	} else {
-		args = []string{"-C", repoRoot, "worktree", "add", worktreePath, branch}
-	}
-
-	cmd := exec.Command("git", args...)
-	var errBuf bytes.Buffer
-	cmd.Stderr = &errBuf
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git worktree add: %w\n%s", err, strings.TrimSpace(errBuf.String()))
-	}
-	return nil
-}
-
 func RemoveWorktree(repoRoot, worktreePath string) error {
 	cmd := exec.Command("git", "-C", repoRoot, "worktree", "remove", "--force", worktreePath)
 	var errBuf bytes.Buffer
@@ -186,6 +162,30 @@ func AddWorktreeNoCheckout(repoRoot, worktreePath, branch string) error {
 	rtCmd.Stderr = &rtBuf
 	if err := rtCmd.Run(); err != nil {
 		return fmt.Errorf("git read-tree HEAD: %w\n%s", err, strings.TrimSpace(rtBuf.String()))
+	}
+	return nil
+}
+
+// MoveWorktree relocates a git worktree from worktreePath to newPath.
+func MoveWorktree(repoRoot, worktreePath, newPath string) error {
+	cmd := exec.Command("git", "-C", repoRoot, "worktree", "move", worktreePath, newPath)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git worktree move: %w\n%s", err, strings.TrimSpace(errBuf.String()))
+	}
+	return nil
+}
+
+// AddWorktreeForward passes args directly to `git worktree add`, giving
+// callers full control over flags (e.g. -b, --no-checkout, --detach).
+func AddWorktreeForward(repoRoot string, args []string) error {
+	cmdArgs := append([]string{"-C", repoRoot, "worktree", "add"}, args...)
+	cmd := exec.Command("git", cmdArgs...)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git worktree add: %w\n%s", err, strings.TrimSpace(errBuf.String()))
 	}
 	return nil
 }
