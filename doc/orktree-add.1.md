@@ -53,9 +53,13 @@ Stack on an existing orktree (zero-cost — overlay lower = hotfix's merged path
 
     orktree add ../variant hotfix
 
-Pass flags through to git worktree add:
+Create the worktree on a new branch:
 
-    orktree add ../experiment -- -b my-branch --detach
+    orktree add ../experiment -- -b my-branch
+
+Create a detached HEAD worktree at a specific commit:
+
+    orktree add ../bisect v2.0.0 -- --detach
 
 # SEE ALSO
 
