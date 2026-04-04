@@ -13,6 +13,18 @@ import (
 	"syscall"
 )
 
+// ErrNotAvailable is returned when fuse-overlayfs cannot be found in PATH.
+var ErrNotAvailable = errors.New("fuse-overlayfs not found in PATH; orktree requires it for copy-on-write overlays — use \"git worktree add\" for a standard worktree instead")
+
+// CheckAvailable verifies that the fuse-overlayfs binary exists in PATH.
+func CheckAvailable() error {
+	_, err := exec.LookPath("fuse-overlayfs")
+	if err != nil {
+		return ErrNotAvailable
+	}
+	return nil
+}
+
 // fuseConfPath is the path to the FUSE configuration file.
 // Tests override this to avoid depending on the system config.
 var fuseConfPath = "/etc/fuse.conf"
@@ -51,6 +63,9 @@ func Create(upper, work string) error {
 }
 
 func Mount(source, upper, work, merged string) error {
+	if err := CheckAvailable(); err != nil {
+		return err
+	}
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", source, upper, work)
 	if UserAllowOther() {
 		opts += ",allow_other"
@@ -100,6 +115,9 @@ func IsMounted(merged string) (bool, error) {
 }
 
 func EnsureMounted(source, upper, work, merged string) error {
+	if err := CheckAvailable(); err != nil {
+		return err
+	}
 	ok, err := IsMounted(merged)
 	if err != nil {
 		return err
