@@ -30,7 +30,7 @@ not at a synthetic `/workspace`.
 ## Quick start
 
 ```bash
-srcroot="$(orktree path -)" || exit 1
+srcroot="$(git rev-parse --show-toplevel)" || exit 1
 wspath="$(orktree path feature-x)" || exit 1
 docker run --rm -it \
   -v "$srcroot":"$srcroot" \
@@ -38,10 +38,10 @@ docker run --rm -it \
   -w "$wspath" myimage bash
 ```
 
-`orktree path -` prints the source root. Appending `.orktree` gives the sibling
-data directory. Both are mounted at their host paths so every absolute path
-inside `.git` files, worktree metadata, and submodule pointers resolves
-correctly.
+The source root is obtained via `git rev-parse --show-toplevel`. Appending
+`.orktree` gives the sibling data directory. Both are mounted at their host
+paths so every absolute path inside `.git` files, worktree metadata, and
+submodule pointers resolves correctly.
 
 > **Warning:** Do not run `orktree rm` while a container is using the orktree.
 > The overlay will be unmounted, causing I/O errors or data loss in the running
@@ -105,7 +105,7 @@ docker run --rm -it \
 Use `orktree ls --quiet` to spawn one container per orktree:
 
 ```bash
-srcroot="$(orktree path -)" || exit 1
+srcroot="$(git rev-parse --show-toplevel)" || exit 1
 for branch in $(orktree ls --quiet); do
   wspath="$(orktree path "$branch")" || continue
   docker run -d --name "dev-${branch//\//-}" \
@@ -124,7 +124,7 @@ Generate an `.env` file containing the resolved paths, then run
 interpolation.
 
 ```bash
-srcroot="$(orktree path -)"
+srcroot="$(git rev-parse --show-toplevel)"
 cat > .env <<EOF
 SRC_ROOT=$srcroot
 ORKTREE_DIR=$srcroot.orktree
@@ -160,7 +160,7 @@ services:
 Set the source root as an environment variable, then open the orktree:
 
 ```bash
-export ORKTREE_SRC_ROOT="$(orktree path -)"
+export ORKTREE_SRC_ROOT="$(git rev-parse --show-toplevel)"
 code "$(orktree path feature-x)"
 ```
 

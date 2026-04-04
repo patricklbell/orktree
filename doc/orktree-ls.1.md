@@ -41,4 +41,4 @@ Get branch names only:
 
 # SEE ALSO
 
-**orktree**(1), **orktree-switch**(1)
+**orktree**(1), **orktree-add**(1)

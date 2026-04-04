@@ -77,7 +77,7 @@ go test ./pkg/orktree/    -run TestCreateIndex_idempotent
 go test ./pkg/orktree/ -run TestRemoveCheck_IsClean/only_ignored_dirty_is_clean
 
 # Run a single smoke test script directly
-bash test/smoke/test_switch_basic.sh
+bash test/smoke/test_add_basic.sh
 ```
 
 ---
@@ -99,8 +99,9 @@ bash test/smoke/test_switch_basic.sh
 
 - All persistent state changes are written atomically: write to a temp file
   then `os.Rename`. Permissions on the state file are `0o600`.
-- Path helpers (`GitTreeDir`, `OverlayDirs`, `MountPath`, `SiblingDir`) live on
-  `*state.State`/`*state.Config`. **Never build orktree paths inline at call sites.**
+- Path helpers (`OverlayDirs`, `SiblingDir`) live on `*state.State`. Merged
+  paths are stored directly in the `Orktree.MergedPath` field.
+  **Never build orktree paths inline at call sites.**
 - Add tests in `internal/state/state_test.go` for any new state behaviour.
 
 ### Naming

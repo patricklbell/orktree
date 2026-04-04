@@ -76,7 +76,7 @@ you left off.
 Keep one build directory per orktree so caches never conflict:
 
 ```bash
-orktree switch feature-x
+cd "$(orktree add ../feature-x)"
 mkdir -p build && cd build
 cmake ..   # fresh configure — no path conflicts
 ```

@@ -59,8 +59,7 @@ failed.
 
 ## Dependents
 
-If other orktrees depend on this one as their base layer (stacked via
-**--from**), removal is always refused — even with **--force**. The
+If other orktrees depend on this one as their base layer (stacked via the *commit-ish* argument to **orktree add**), removal is always refused — even with **--force**. The
 dependent orktrees must be removed first or re-stacked with a different
 base.
 
@@ -103,4 +102,4 @@ Remove even if there are untracked files (but still prompt for tracked changes):
 
 # SEE ALSO
 
-**orktree**(1), **orktree-switch**(1)
+**orktree**(1), **orktree-add**(1)

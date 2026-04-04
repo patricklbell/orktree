@@ -171,6 +171,9 @@ func (i *Index) AddOrktree(path string, opts AddOrktreeOptions) (OrktreeMetadata
 	}
 
 	// On any failure below, clean up the state entry.
+	// TODO: cleanup only removes the state entry; orphaned overlay dirs and git
+	// worktree registrations are left behind. A future "orktree repair" command
+	// could garbage-collect these.
 	cleanup := func() { state.RemoveOrktree(i.state, w.ID) } //nolint:errcheck
 
 	var lowerDir string

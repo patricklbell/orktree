@@ -598,7 +598,7 @@ Usage:
 
 Commands:
   add     <path> [<commit-ish>] [-- <git-flags>...]      Create a new orktree
-  rm      <worktree>... [--force] [--ignore-untracked]    Remove orktree(s)
+  rm      <worktree>... [--force] [--ignore-untracked] [--ignore-tracked]    Remove orktree(s)
   ls      [--quiet]                                        List orktrees
   path    <worktree>                                       Print workspace path
   mount   <worktree>                                       Mount overlay
