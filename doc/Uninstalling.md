@@ -56,6 +56,13 @@ If man pages were installed, remove them too:
 rm ~/.local/share/man/man1/orktree*.1
 ```
 
+If shell completions were installed, remove them:
+
+```sh
+rm -f ~/.local/share/bash-completion/completions/orktree
+rm -f ~/.local/share/zsh/site-functions/_orktree
+```
+
 ---
 
 ## What orktree does NOT touch

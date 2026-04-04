@@ -27,7 +27,7 @@ Download the appropriate package for your distribution and architecture (x86_64/
 ```sh
 cd /path/to/your/repo
 orktree add ../feature-x               # create orktree next to repo
-orktree add ../variant feature-x        # stack on existing orktree
+orktree add ../variant feature-x        # stack: variant sees feature-x files, changes are isolated
 orktree ls                              # list orktrees
 orktree rm feature-x variant            # remove orktrees
 ```

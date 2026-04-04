@@ -37,3 +37,14 @@ end
 
 This is entirely optional — orktree works fine without it. The `ork` function
 is just a shorthand for `cd "$(orktree path ...)"`.
+
+## Tab Completion
+
+`make install` installs tab completion for both **bash** and **zsh**. After
+installation (and restarting your shell), orktree subcommands and branch names
+complete with `<Tab>`.
+
+The completion files are installed to:
+
+- `~/.local/share/bash-completion/completions/orktree`
+- `~/.local/share/zsh/site-functions/_orktree`
