@@ -177,15 +177,26 @@ func MoveWorktree(repoRoot, worktreePath, newPath string) error {
 	return nil
 }
 
-// AddWorktreeForward passes args directly to `git worktree add`, giving
-// callers full control over flags (e.g. -b, --no-checkout, --detach).
-func AddWorktreeForward(repoRoot string, args []string) error {
-	cmdArgs := append([]string{"-C", repoRoot, "worktree", "add"}, args...)
+// AddWorktreeForward runs `git worktree add --no-checkout <worktreePath> <args...>`
+// and then populates the index via `git read-tree HEAD`. The caller's args are
+// appended after the path, allowing flags like `-b <branch>` to override the
+// default branch while orktree retains control of --no-checkout and the path.
+func AddWorktreeForward(repoRoot, worktreePath string, args []string) error {
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		return fmt.Errorf("creating worktree path %s: %w", worktreePath, err)
+	}
+	cmdArgs := append([]string{"-C", repoRoot, "worktree", "add", "--no-checkout", worktreePath}, args...)
 	cmd := exec.Command("git", cmdArgs...)
 	var errBuf bytes.Buffer
 	cmd.Stderr = &errBuf
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git worktree add: %w\n%s", err, strings.TrimSpace(errBuf.String()))
+	}
+	var rtBuf bytes.Buffer
+	rtCmd := exec.Command("git", "-C", worktreePath, "read-tree", "HEAD")
+	rtCmd.Stderr = &rtBuf
+	if err := rtCmd.Run(); err != nil {
+		return fmt.Errorf("git read-tree HEAD: %w\n%s", err, strings.TrimSpace(rtBuf.String()))
 	}
 	return nil
 }

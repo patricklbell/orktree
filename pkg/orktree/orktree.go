@@ -241,7 +241,7 @@ func (i *Index) setupGitForAdd(w *state.Orktree, branch string, opts AddOrktreeO
 			}
 
 			if len(opts.ExtraArgs) > 0 {
-				if err := git.AddWorktreeForward(sourceRoot, opts.ExtraArgs); err != nil {
+				if err := git.AddWorktreeForward(sourceRoot, absPath, opts.ExtraArgs); err != nil {
 					return "", fmt.Errorf("registering git worktree: %w", err)
 				}
 			} else {
@@ -272,7 +272,7 @@ func (i *Index) setupGitForAdd(w *state.Orktree, branch string, opts AddOrktreeO
 		}
 
 		if len(opts.ExtraArgs) > 0 {
-			if err := git.AddWorktreeForward(sourceRoot, opts.ExtraArgs); err != nil {
+			if err := git.AddWorktreeForward(sourceRoot, absPath, opts.ExtraArgs); err != nil {
 				return "", fmt.Errorf("registering git worktree: %w", err)
 			}
 		} else {
@@ -302,7 +302,7 @@ func (i *Index) setupGitForAdd(w *state.Orktree, branch string, opts AddOrktreeO
 	}
 
 	if len(opts.ExtraArgs) > 0 {
-		if err := git.AddWorktreeForward(sourceRoot, opts.ExtraArgs); err != nil {
+		if err := git.AddWorktreeForward(sourceRoot, absPath, opts.ExtraArgs); err != nil {
 			return "", fmt.Errorf("registering git worktree: %w", err)
 		}
 	} else {
